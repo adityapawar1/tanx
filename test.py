@@ -13,16 +13,12 @@ if __name__ == '__main__':
 
     observation, info = env.reset()
     episode_over = False
-    total_reward: int = 0
+    agent_ids = ["tank0", "tank1", "tank2", "tank3"]
+
 
     while not episode_over:
-        action = env.action_space.sample()
-        observation, reward, terminated, truncated, info = env.step(action)
-        print(action, reward)
+        action_dict = {agent_id: env.action_space.sample() for agent_id in agent_ids}
+        env.step(action_dict)
 
-        total_reward += reward
-        episode_over = terminated or truncated
-
-    print(f"Episode finished! Total reward: {total_reward}")
     env.close()
 

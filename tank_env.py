@@ -37,33 +37,34 @@ class TankEnv(MultiAgentEnv):
 
         self.size = size
         self.players = players
-        self.agents = self.possible_agents = [self.idx_to_agent_id(i) for i in range(players)]
+        self.possible_agents = [self.idx_to_agent_id(i) for i in range(players)]
+        self._agent_ids = set(self.possible_agents)
 
         self._agent_states = np.zeros((players, 6), dtype=np.int32)
         self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float64) for idx in range(players)}
         self._agents_killed = set()
 
-        agent_space = gym.spaces.Box(
-            np.array([0, 0, 0, 0, 0, 0]),
-            np.array([size - 1, size - 1, 360, self.MAX_AMMO, self.MAX_CHARGE_TIME_STEPS, 1]),
-            shape=(6,),
-            dtype=np.int32
-        )
-        bullet_space = gym.spaces.Box(
-            np.array([0, 0, -self.MAX_BULLET_COMPONENT_SPEED_PPS, -self.MAX_BULLET_COMPONENT_SPEED_PPS]),
-            np.array([size - 1, size - 1, self.MAX_BULLET_COMPONENT_SPEED_PPS, self.MAX_BULLET_COMPONENT_SPEED_PPS]),
-            shape=(4,),
-            dtype=np.float64
-        )
-        self.observation_space = gym.spaces.Dict(
-            {
-                "agent": agent_space,
-                "opponents": gym.spaces.Sequence(agent_space, stack=True),
-                "bullets": gym.spaces.Sequence(bullet_space, stack=True)
-            }
+        single_agent_space_low = np.array([0, 0, 0, 0, 0, 0])
+        single_agent_space_high = np.array([size - 1, size - 1, 360, self.MAX_AMMO, self.MAX_CHARGE_TIME_STEPS, 1])
+
+        single_bullet_space_low = np.array([0, 0, -self.MAX_BULLET_COMPONENT_SPEED_PPS, -self.MAX_BULLET_COMPONENT_SPEED_PPS])
+        single_bullet_space_high = np.array([size - 1, size - 1, self.MAX_BULLET_COMPONENT_SPEED_PPS, self.MAX_BULLET_COMPONENT_SPEED_PPS])
+
+        self.full_agent_space_low = np.tile(single_agent_space_low, players)
+        self.full_agent_space_high = np.tile(single_agent_space_high, players)
+        self.full_bullet_space_low = np.tile(single_bullet_space_low, (players - 1) * self.MAX_AMMO)
+        self.full_bullet_space_high = np.tile(single_bullet_space_high, (players - 1) * self.MAX_AMMO)
+
+        self.observation_space = gym.spaces.Box(
+            low=np.concat((self.full_agent_space_low, self.full_bullet_space_low)),
+            high=np.concat((self.full_agent_space_high, self.full_bullet_space_high)),
+            shape=(len(self.full_agent_space_low) + len(self.full_bullet_space_low),),
+            dtype=np.float32
         )
 
-        self.action_space = gym.spaces.MultiBinary(7)
+        # ray rllib doesnt support multi binary rn bruh
+        # self.action_space = gym.spaces.MultiBinary(7)
+        self.action_space = gym.spaces.MultiDiscrete([2]*7)
         self._action_to_delta: Dict[int, np.ndarray] = {
             ActionState.RIGHT: np.array([1, 0, 0]),
             ActionState.UP: np.array([0, 1, 0]),
@@ -77,14 +78,14 @@ class TankEnv(MultiAgentEnv):
         self.observation_spaces = {agent_id: self.observation_space for agent_id in self.possible_agents}
         self.action_spaces = {agent_id: self.action_space for agent_id in self.possible_agents}
 
-        try:
-            assert render_mode is None or render_mode in self.metadata["render_modes"]
-        except:
-            raise Exception(f"render mode is bad: {render_mode}")
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
 
         self.render_mode = render_mode
         self.window = None
         self.clock = None
+
+    def get_agent_ids(self) -> set:
+        return set(self.possible_agents)
 
     def agent_id_to_idx(self, agent_id: str) -> int:
         return int(agent_id[len(self.AGENT_PREFIX):])
@@ -94,17 +95,21 @@ class TankEnv(MultiAgentEnv):
 
     def _get_obs(self, agent_idx: int):
         this_agent = self._agent_states[agent_idx]
-        other_agents = np.delete(self._agent_states, [agent_idx] + list(self._agents_killed), axis=0)
+        other_agents = np.delete(self._agent_states, agent_idx, axis=0).flatten()
 
-        bullet_states = np.empty(shape=(0,4), dtype=np.float64)
-        for _, bullets in self._bullet_states.items():
-            bullet_states = np.vstack((bullet_states, *bullets))
+        bullet_states = np.array([])
+        for owner, bullets in self._bullet_states.items():
+            if agent_idx == owner:
+                continue
 
-        return {
-            "agent": this_agent,
-            "bullets": bullet_states,
-            "opponents": other_agents,
-        }
+            bullet_states = np.concat((bullet_states, *bullets))
+        bullet_states = np.pad(bullet_states, (0, len(self.full_bullet_space_low) - len(bullet_states)))
+
+        return np.concat((
+            this_agent,
+            other_agents,
+            bullet_states,
+        ))
 
     def _get_all_obs(self):
         return {agent_id: self._get_obs(self.agent_id_to_idx(agent_id)) for agent_id in self.agents}
@@ -121,7 +126,7 @@ class TankEnv(MultiAgentEnv):
         charge_time = np.zeros((self.players,1), dtype=np.int32)
         alive_flags = np.ones((self.players,1), dtype=np.int32)
 
-        self.agents = self.possible_agents
+        self.agents = self.possible_agents[:]
 
         self._agent_states = np.hstack((locations, angles, ammo, charge_time, alive_flags))
         self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float64) for idx in range(self.players)}
@@ -137,10 +142,11 @@ class TankEnv(MultiAgentEnv):
 
         agents_killed = set()
         for agent_idx in range(self.players):
-            action = action_dict.get(self.idx_to_agent_id(agent_idx), np.zeros(shape=(6,)))
+            action = np.array(action_dict.get(self.idx_to_agent_id(agent_idx), [0] * 7))
 
             reward, killed = self._step_agent(action, agent_idx)
-            rewards[self.idx_to_agent_id(agent_idx)] = reward
+            if agent_idx not in self._agents_killed:
+                rewards[self.idx_to_agent_id(agent_idx)] = reward
             agents_killed.update(killed)
 
         for agent_idx in agents_killed:
@@ -150,6 +156,8 @@ class TankEnv(MultiAgentEnv):
 
         truncated = {}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
+        terminateds["__all__"] = len(self._agents_killed) == self.players - 1
+
         observations = self._get_all_obs()
         info = self._get_info()
 
