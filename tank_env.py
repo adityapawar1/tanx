@@ -2,8 +2,15 @@ from enum import IntEnum
 from typing import List, Optional
 import numpy as np
 import gymnasium as gym
+import pygame
 
 class ActionState(IntEnum):
+    RIGHT = 0
+    UP = 1
+    LEFT = 2
+    DOWN = 3
+    INCREASE_ANGLE = 4
+    DECREASE_ANGLE = 5
     SHOOT = 6
 
 class TankState(IntEnum):
@@ -21,20 +28,24 @@ class BulletState(IntEnum):
     DY = 3
 
 class TankEnv(gym.Env):
+    metadata = {"render_modes": ["human"], "render_fps": 10}
+
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
     MAX_AMMO = 3
-    TANK_SPEED = 10
-    TANK_SIZE_PIXELS = 20
+    TANK_SPEED = 3
+    TANK_SIZE_PIXELS = 30
     GUN_ROTATE_SPEED = 5
     TANK_SIZE_FROM_CENTER = TANK_SIZE_PIXELS // 2
-    MAX_CHARGE_TIME_STEPS = 200
+    MAX_CHARGE_TIME_STEPS = 5000
     CHARGE_LOSS_RATE = 10
-    CHARGE_SPEED_FACTOR = 1 / 20
-    BASE_BULLET_SPEED = 5
+    CHARGE_SPEED_FACTOR = 1 / 100
+    BASE_BULLET_SPEED = 15
+    BULLET_RADIUS = 5
+    GUN_SIZE_PIXELS = 30
 
     KILL_REWARD = 200
     SHOOT_REWARD = 1
-    def __init__(self, size=1000, players=2):
+    def __init__(self, render_mode=None, size=750, players=5):
         super(TankEnv, self).__init__()
 
         self.size = size
@@ -65,21 +76,26 @@ class TankEnv(gym.Env):
 
         self.action_space = gym.spaces.MultiBinary(7)
         self._action_to_delta = {
-            0: np.array([1, 0, 0]),  # right
-            1: np.array([0, 1, 0]),  # up
-            2: np.array([-1, 0, 0]), # left
-            3: np.array([0, -1, 0]), # down
-            4: np.array([0, 0, 1]),  # increase shot angle
-            5: np.array([0, 0, -1]), # decrease shot angle
-            6: np.array([0, 0, 0]),  # shoot
+            ActionState.RIGHT: np.array([1, 0, 0]),
+            ActionState.UP: np.array([0, 1, 0]),
+            ActionState.LEFT: np.array([-1, 0, 0]),
+            ActionState.DOWN: np.array([0, -1, 0]),
+            ActionState.INCREASE_ANGLE: np.array([0, 0, 1]),
+            ActionState.DECREASE_ANGLE: np.array([0, 0, -1]),
+            ActionState.SHOOT: np.array([0, 0, 0]),
         }
+
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+        self.window = None
+        self.clock = None
 
     def _get_obs(self, agent_idx: int):
         this_agent = self._agent_states[agent_idx]
         other_agents = np.delete(self._agent_states, [agent_idx] + list(self._agents_killed), axis=0)
 
         bullet_states = np.empty(shape=(0,4), dtype=np.float64)
-        for owner, bullets in self._bullet_states.items():
+        for _, bullets in self._bullet_states.items():
             bullet_states = np.vstack((bullet_states, *bullets))
 
         return {
@@ -104,6 +120,9 @@ class TankEnv(gym.Env):
         self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float64) for idx in range(self.players)}
         self._agents_killed = set()
 
+        if self.render_mode == "human":
+            self.render()
+
         return self._get_obs(0), self._get_info()
 
     def step(self, action):
@@ -125,13 +144,18 @@ class TankEnv(gym.Env):
         focused_agent = 0
         reward = rewards[focused_agent]
         truncated = False
-        terminated = focused_agent in agents_killed
+        # terminated = focused_agent in agents_killed
+        terminated = False
         observation = self._get_obs(focused_agent)
         info = self._get_info()
+
+        if self.render_mode == "human":
+            self.render()
 
         return observation, reward, terminated, truncated, info
 
     def _step_agent(self, action, agent_idx) -> tuple[int, List[int]]:
+        agent_state = self._agent_states[agent_idx]
         reward = 0
         agents_to_kill = []
 
@@ -149,11 +173,12 @@ class TankEnv(gym.Env):
 
                 if not (0 <= bullet[BulletState.X] < self.size) or not (0 <= bullet[BulletState.Y] < self.size):
                     bullets_to_destroy.append(i)
+                    agent_state[TankState.AMMO] += 1
 
         if len(bullets_to_destroy) > 0:
             self._bullet_states[agent_idx] = np.delete(self._bullet_states[agent_idx], bullets_to_destroy, axis=0)
 
-        agent_state = self._agent_states[agent_idx]
+
         did_move = False
         for action_idx, was_taken in enumerate(action):
             if was_taken == 1:
@@ -180,6 +205,9 @@ class TankEnv(gym.Env):
             gun_angle_rad = np.deg2rad(agent_state[TankState.GUN_ANGLE])
 
             dx, dy = speed * np.cos(gun_angle_rad), speed * np.sin(gun_angle_rad)
+            dx = max(min(self.MAX_BULLET_COMPONENT_SPEED_PPS, dx), -self.MAX_BULLET_COMPONENT_SPEED_PPS)
+            dy = max(min(self.MAX_BULLET_COMPONENT_SPEED_PPS, dy), -self.MAX_BULLET_COMPONENT_SPEED_PPS)
+
             new_bullet = np.array([agent_state[TankState.X], agent_state[TankState.Y], dx, dy], dtype=np.float64)
             self._bullet_states[agent_idx] = np.vstack((self._bullet_states[agent_idx], new_bullet))
 
@@ -192,7 +220,8 @@ class TankEnv(gym.Env):
         bullet_x, bullet_y = bullet[BulletState.X], bullet[BulletState.Y]
         dx, dy = bullet[BulletState.DX], bullet[BulletState.DY]
 
-        total_steps = max(abs(dx), abs(dy))
+        # TODO: maybe dont just int() this
+        total_steps = int(max(abs(dx), abs(dy)))
         x_step, y_step = dx / total_steps, dy / total_steps
 
         for _ in range(total_steps):
@@ -204,11 +233,74 @@ class TankEnv(gym.Env):
                     continue
 
                 player_x, player_y = player[TankState.X], player[TankState.Y]
-                if abs(bullet_x - player_x) <= self.TANK_SIZE_FROM_CENTER and abs(bullet_y - player_y) <= self.TANK_SIZE_FROM_CENTER:
+                collision_distance = self.TANK_SIZE_FROM_CENTER + self.BULLET_RADIUS
+                if abs(bullet_x - player_x) <= collision_distance and abs(bullet_y - player_y) <= collision_distance:
                     return idx
 
             bullet_x += x_step
             bullet_y += y_step
 
         return -1
+
+    def render(self):
+        if self.window is None and self.render_mode == "human":
+            pygame.init()
+            pygame.display.init()
+            self.window = pygame.display.set_mode(
+                (self.size, self.size)
+            )
+        if self.clock is None and self.render_mode == "human":
+            self.clock = pygame.time.Clock()
+
+        canvas = pygame.Surface((self.size, self.size))
+        canvas.fill((255, 255, 255))
+
+        for agent_idx in range(self.players):
+            agent_state = self._agent_states[agent_idx]
+            if agent_state[TankState.IS_ALIVE] == 0:
+                continue
+
+            center_x, center_y = agent_state[TankState.X], agent_state[TankState.Y]
+            left = center_x - self.TANK_SIZE_FROM_CENTER
+            top = center_y - self.TANK_SIZE_FROM_CENTER
+
+            gun_angle_rad = np.deg2rad(agent_state[TankState.GUN_ANGLE])
+            gun_end_x = center_x + self.GUN_SIZE_PIXELS * np.cos(gun_angle_rad)
+            gun_end_y = center_y + self.GUN_SIZE_PIXELS * np.sin(gun_angle_rad)
+
+            pygame.draw.rect(
+                canvas,
+                (255, 0, 0),
+                pygame.Rect(left, top, self.TANK_SIZE_PIXELS, self.TANK_SIZE_PIXELS),
+            )
+            pygame.draw.line(
+                canvas,
+                (0, 0, 0),
+                (center_x, center_y),
+                (gun_end_x, gun_end_y),
+                3
+            )
+
+        for _, bullets in self._bullet_states.items():
+            for bullet in bullets:
+                center_x, center_y = bullet[BulletState.X], bullet[BulletState.Y]
+
+                pygame.draw.circle(
+                    canvas,
+                    (0, 0, 0),
+                    (center_x, center_y),
+                    self.BULLET_RADIUS
+                )
+
+        if self.window is not None and self.clock is not None:
+            self.window.blit(canvas, canvas.get_rect())
+            pygame.event.pump()
+            pygame.display.update()
+            self.clock.tick(self.metadata["render_fps"])
+
+
+    def close(self):
+        if self.window is not None:
+            pygame.display.quit()
+            pygame.quit()
 
