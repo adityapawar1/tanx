@@ -47,7 +47,9 @@ if __name__ == '__main__':
     # local_path = "./ray_results/tank-v0/PPO_TankEnv-v0_dd738_00000_0_2025-10-15_02-32-27/checkpoint_000000"
     # local_path = "./ray_results/tank-timed-ammo-v1/PPO_TankEnv-v0_059e4_00000_0_2025-10-15_03-16-32/checkpoint_000003"
     # local_path = "./ray_results/tank-new-reward-v2/PPO_TankEnv-v0_7f70f_00000_0_2025-10-15_03-41-25/checkpoint_000000"
-    local_path = "./ray_results/tank-new-reward-v2/PPO_TankEnv-v0_9230b_00000_0_2025-10-15_12-45-58/checkpoint_000000"
+    # local_path = "./ray_results/tank-new-reward-v2/PPO_TankEnv-v0_9230b_00000_0_2025-10-15_12-45-58/checkpoint_000000"
+    local_path = "./ray_results/tank-new-new-reward-v3/PPO_TankEnv-v0_45f1d_00000_0_2025-10-15_13-05-18/checkpoint_000001"
+
 
     checkpoint_path = os.path.abspath(local_path)
     test_trained_model(checkpoint_path, num_episodes=3)

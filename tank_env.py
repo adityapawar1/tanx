@@ -165,7 +165,7 @@ class TankEnv(MultiAgentEnv):
             self._agents_killed.add(agent_idx)
             rewards[self.idx_to_agent_id(agent_idx)] += self.DEATH_PENALTY
 
-        time_cutoff = self.RENDER_FPS * 60 > self._current_step
+        time_cutoff = self._current_step > self.RENDER_FPS * 60
         truncated = {agent_id: time_cutoff for agent_id in self.agents}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
         terminateds["__all__"] = len(self.agents) == 1
