@@ -15,15 +15,6 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("TankEnv-v0")
         .framework("torch")
-        .training(
-            train_batch_size=4000,
-            # sgd_minibatch_size=128,
-            num_sgd_iter=10,
-            lr=3e-4,
-            gamma=0.99,
-            lambda_=0.95,
-            clip_param=0.2,
-        )
         .multi_agent(
             policies={"shared_policy": (None, env.observation_space, env.action_space, {})},
             policy_mapping_fn=lambda agent_id, *a, **k: "shared_policy",
@@ -34,11 +25,10 @@ if __name__ == "__main__":
             evaluation_duration=10,
             evaluation_duration_unit="episodes",
         )
-        # .callbacks(EnvRenderCallback)
     )
 
     run_config = RunConfig(
-        name="tank-small-screen-shoot-penalty-v2",
+        name="tank-new-new-reward-v3",
         storage_path=os.path.abspath("./ray_results"),
         stop={"training_iteration": 1000},
         checkpoint_config=CheckpointConfig(

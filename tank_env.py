@@ -18,7 +18,7 @@ class TankEnv(MultiAgentEnv):
     GUN_ROTATE_SPEED = 5
     TANK_SIZE_FROM_CENTER = TANK_SIZE_PIXELS // 2
 
-    MAX_CHARGE_MULTIPLIER = 5
+    MAX_CHARGE_MULTIPLIER = 8
     MAX_CHARGE_TIME_STEPS = RENDER_FPS * 3
     CHARGE_LOSS_RATE = MAX_CHARGE_TIME_STEPS // RENDER_FPS
     CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) // MAX_CHARGE_TIME_STEPS
@@ -27,13 +27,15 @@ class TankEnv(MultiAgentEnv):
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
+    WIN_REWARD = 400
     KILL_REWARD = 200
-    SHOOT_PENALTY = -1
+    DEATH_PENALTY = -250
+    SURVIVAL_REWARD = 1
+    CHARGE_REWARD_FACTOR = 0.25
 
     AGENT_PREFIX = "tank"
-
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
-    def __init__(self, config=None, render_mode=None, size=500, players=4):
+    def __init__(self, config=None, render_mode=None, size=600, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
@@ -161,11 +163,14 @@ class TankEnv(MultiAgentEnv):
             self._agent_states[agent_idx][TankState.IS_ALIVE] = 0
             self.agents.remove(self.idx_to_agent_id(agent_idx))
             self._agents_killed.add(agent_idx)
+            rewards[self.idx_to_agent_id(agent_idx)] += self.DEATH_PENALTY
 
         time_cutoff = self.RENDER_FPS * 60 > self._current_step
         truncated = {agent_id: time_cutoff for agent_id in self.agents}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
-        terminateds["__all__"] = len(self._agents_killed) == self.players - 1
+        terminateds["__all__"] = len(self.agents) == 1
+        if terminateds["__all__"]:
+            rewards[self.agents[0]] += self.WIN_REWARD
 
         observations = self._get_all_obs()
         info = self._get_all_info()
@@ -177,7 +182,7 @@ class TankEnv(MultiAgentEnv):
 
     def _step_agent(self, action, agent_idx) -> tuple[int, List[int]]:
         agent_state = self._agent_states[agent_idx]
-        reward = 0
+        reward = self.SURVIVAL_REWARD
         agents_to_kill = []
 
         bullets_to_destroy: List[int] = []
@@ -221,6 +226,7 @@ class TankEnv(MultiAgentEnv):
             agent_state[TankState.CHARGE] += 1
             agent_state[TankState.CHARGE] = min(self.MAX_CHARGE_TIME_STEPS, agent_state[TankState.CHARGE])
             self._agent_info[agent_idx]["max_charge"] = max(self._agent_info[agent_idx]["max_charge"], agent_state[TankState.CHARGE])
+            reward += agent_state[TankState.CHARGE] * self.CHARGE_REWARD_FACTOR
         else:
             agent_state[TankState.CHARGE] -= self.CHARGE_LOSS_RATE
             agent_state[TankState.CHARGE] = max(0, agent_state[TankState.CHARGE])
@@ -237,7 +243,7 @@ class TankEnv(MultiAgentEnv):
             self._bullet_states[agent_idx] = np.vstack((self._bullet_states[agent_idx], new_bullet))
 
             agent_state[TankState.AMMO] -= 1
-            reward += speed - self.BASE_BULLET_SPEED + self.SHOOT_PENALTY
+            reward += speed - self.BASE_BULLET_SPEED
 
         if agent_state[TankState.AMMO] < self.MAX_AMMO:
             self._ammo_replenish_counters[agent_idx] += 1
