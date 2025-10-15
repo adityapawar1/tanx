@@ -1,5 +1,5 @@
 from enum import IntEnum
-from typing import List, Optional
+from typing import Dict, List, Optional
 import numpy as np
 import gymnasium as gym
 import pygame
@@ -28,30 +28,36 @@ class BulletState(IntEnum):
     DY = 3
 
 class TankEnv(gym.Env):
-    metadata = {"render_modes": ["human"], "render_fps": 10}
+    RENDER_FPS = 20
 
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
     MAX_AMMO = 3
+
     TANK_SPEED = 3
     TANK_SIZE_PIXELS = 30
     GUN_ROTATE_SPEED = 5
     TANK_SIZE_FROM_CENTER = TANK_SIZE_PIXELS // 2
-    MAX_CHARGE_TIME_STEPS = 5000
-    CHARGE_LOSS_RATE = 10
-    CHARGE_SPEED_FACTOR = 1 / 100
-    BASE_BULLET_SPEED = 15
+
+    MAX_CHARGE_MULTIPLIER = 5
+    MAX_CHARGE_TIME_STEPS = RENDER_FPS * 3
+    CHARGE_LOSS_RATE = MAX_CHARGE_TIME_STEPS // RENDER_FPS
+    CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) // MAX_CHARGE_TIME_STEPS
+
+    BASE_BULLET_SPEED = 20
     BULLET_RADIUS = 5
-    GUN_SIZE_PIXELS = 30
+    GUN_SIZE_PIXELS = 20
 
     KILL_REWARD = 200
     SHOOT_REWARD = 1
+
+    metadata = {"render_modes": ["human"], "render_fps": RENDER_FPS}
     def __init__(self, render_mode=None, size=750, players=5):
         super(TankEnv, self).__init__()
 
         self.size = size
         self.players = players
         self._agent_states = np.zeros((players, 6), dtype=np.int32)
-        self._bullet_states = {idx: np.empty((0, 4), dtype=np.float64) for idx in range(players)}
+        self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float64) for idx in range(players)}
         self._agents_killed = set()
 
         agent_space = gym.spaces.Box(
@@ -75,7 +81,7 @@ class TankEnv(gym.Env):
         )
 
         self.action_space = gym.spaces.MultiBinary(7)
-        self._action_to_delta = {
+        self._action_to_delta: Dict[int, np.ndarray] = {
             ActionState.RIGHT: np.array([1, 0, 0]),
             ActionState.UP: np.array([0, 1, 0]),
             ActionState.LEFT: np.array([-1, 0, 0]),
@@ -130,8 +136,8 @@ class TankEnv(gym.Env):
 
         agents_killed = set()
         for agent_idx in range(self.players):
-            if self._agent_states[agent_idx][TankState.IS_ALIVE] == 0:
-                continue
+            if agent_idx != 0:
+                action = self.action_space.sample()
 
             reward, killed = self._step_agent(action, agent_idx)
             rewards.append(reward)
@@ -144,8 +150,7 @@ class TankEnv(gym.Env):
         focused_agent = 0
         reward = rewards[focused_agent]
         truncated = False
-        # terminated = focused_agent in agents_killed
-        terminated = False
+        terminated = len(self._agents_killed) == self.players - 1
         observation = self._get_obs(focused_agent)
         info = self._get_info()
 
@@ -178,6 +183,9 @@ class TankEnv(gym.Env):
         if len(bullets_to_destroy) > 0:
             self._bullet_states[agent_idx] = np.delete(self._bullet_states[agent_idx], bullets_to_destroy, axis=0)
 
+        # still move bullets if they die, but don't move themselves
+        if self._agent_states[agent_idx][TankState.IS_ALIVE] == 0:
+            return 0, agents_to_kill
 
         did_move = False
         for action_idx, was_taken in enumerate(action):
@@ -201,7 +209,7 @@ class TankEnv(gym.Env):
             agent_state[TankState.CHARGE] = max(0, agent_state[TankState.CHARGE])
 
         if action[ActionState.SHOOT] and agent_state[TankState.AMMO] > 0:
-            speed = self.BASE_BULLET_SPEED + (agent_state[TankState.CHARGE] * self.CHARGE_SPEED_FACTOR)
+            speed = self.BASE_BULLET_SPEED * (1 + agent_state[TankState.CHARGE] * self.CHARGE_SPEED_FACTOR)
             gun_angle_rad = np.deg2rad(agent_state[TankState.GUN_ANGLE])
 
             dx, dy = speed * np.cos(gun_angle_rad), speed * np.sin(gun_angle_rad)
