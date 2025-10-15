@@ -31,7 +31,7 @@ class TankEnv(MultiAgentEnv):
 
     AGENT_PREFIX = "tank"
 
-    metadata = {"render_modes": ["human"], "render_fps": RENDER_FPS}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
     def __init__(self, config=None, render_mode=None, size=750, players=4):
         super(TankEnv, self).__init__()
 
@@ -39,9 +39,10 @@ class TankEnv(MultiAgentEnv):
         self.players = players
         self.possible_agents = [self.idx_to_agent_id(i) for i in range(players)]
 
-        self._agent_states = np.zeros((players, 6), dtype=np.int32)
-        self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float64) for idx in range(players)}
+        self._agent_states = np.zeros((self.players, 6), dtype=np.int32)
+        self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float32) for idx in range(players)}
         self._agents_killed = set()
+        self._agent_info = [{"agent_kills": 0, "max_charge": 0} for i in range(self.players)]
 
         single_agent_space_low = np.array([0, 0, 0, 0, 0, 0])
         single_agent_space_high = np.array([size - 1, size - 1, 360, self.MAX_AMMO, self.MAX_CHARGE_TIME_STEPS, 1])
@@ -63,7 +64,7 @@ class TankEnv(MultiAgentEnv):
 
         # ray rllib doesnt support multi binary rn bruh
         # self.action_space = gym.spaces.MultiBinary(7)
-        self.action_space = gym.spaces.MultiDiscrete([2]*7)
+        self.action_space = gym.spaces.MultiDiscrete([2] * 7)
         self._action_to_delta: Dict[int, np.ndarray] = {
             ActionState.RIGHT: np.array([1, 0, 0]),
             ActionState.UP: np.array([0, 1, 0]),
@@ -89,9 +90,8 @@ class TankEnv(MultiAgentEnv):
     def idx_to_agent_id(self, agent_idx) -> str:
         return f"{self.AGENT_PREFIX}{agent_idx}"
 
-    def _get_info(self):
-        charge = [state[TankState.CHARGE] for state in self._agent_states]
-        return {"agents_killed": len(self._agents_killed), "max_charge": max(charge), "avg_charge": sum(charge) / len(charge)}
+    def _get_info(self, agent_idx):
+        return self._agent_info[agent_idx]
 
     def _get_obs(self, agent_idx: int):
         this_agent = self._agent_states[agent_idx]
@@ -111,6 +111,9 @@ class TankEnv(MultiAgentEnv):
             bullet_states,
         ))
 
+    def _get_all_info(self):
+        return {agent_id: self._get_info(self.agent_id_to_idx(agent_id)) for agent_id in self.agents}
+
     def _get_all_obs(self):
         return {agent_id: self._get_obs(self.agent_id_to_idx(agent_id)) for agent_id in self.agents}
 
@@ -126,13 +129,14 @@ class TankEnv(MultiAgentEnv):
         self.agents = self.possible_agents[:]
 
         self._agent_states = np.hstack((locations, angles, ammo, charge_time, alive_flags))
-        self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float64) for idx in range(self.players)}
+        self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float32) for idx in range(self.players)}
         self._agents_killed = set()
+        self._agent_info = [{"agent_kills": 0, "max_charge": 0} for _ in range(self.players)]
 
         if self.render_mode == "human":
             self.render()
 
-        return self._get_all_obs(), self._get_info()
+        return self._get_all_obs(), self._get_all_info()
 
     def step(self, action_dict):
         rewards = {}
@@ -151,12 +155,12 @@ class TankEnv(MultiAgentEnv):
             self.agents.remove(self.idx_to_agent_id(agent_idx))
             self._agents_killed.add(agent_idx)
 
-        truncated = {}
+        truncated = {agent_id: False for agent_id in self.possible_agents}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
         terminateds["__all__"] = len(self._agents_killed) == self.players - 1
 
         observations = self._get_all_obs()
-        info = self._get_info()
+        info = self._get_all_info()
 
         if self.render_mode == "human":
             self.render()
@@ -175,6 +179,7 @@ class TankEnv(MultiAgentEnv):
                 reward += self.KILL_REWARD
                 agents_to_kill.append(agent_killed)
                 bullets_to_destroy.append(i)
+                self._agent_info[agent_idx]["agent_kills"] += 1
             else:
                 dx, dy = bullet[BulletState.DX], bullet[BulletState.DY]
                 bullet[BulletState.X] += dx
@@ -208,6 +213,7 @@ class TankEnv(MultiAgentEnv):
         if not did_move:
             agent_state[TankState.CHARGE] += 1
             agent_state[TankState.CHARGE] = min(self.MAX_CHARGE_TIME_STEPS, agent_state[TankState.CHARGE])
+            self._agent_info[agent_idx]["max_charge"] = max(self._agent_info[agent_idx]["max_charge"], agent_state[TankState.CHARGE])
         else:
             agent_state[TankState.CHARGE] -= self.CHARGE_LOSS_RATE
             agent_state[TankState.CHARGE] = max(0, agent_state[TankState.CHARGE])
@@ -220,7 +226,7 @@ class TankEnv(MultiAgentEnv):
             dx = max(min(self.MAX_BULLET_COMPONENT_SPEED_PPS, dx), -self.MAX_BULLET_COMPONENT_SPEED_PPS)
             dy = max(min(self.MAX_BULLET_COMPONENT_SPEED_PPS, dy), -self.MAX_BULLET_COMPONENT_SPEED_PPS)
 
-            new_bullet = np.array([agent_state[TankState.X], agent_state[TankState.Y], dx, dy], dtype=np.float64)
+            new_bullet = np.array([agent_state[TankState.X], agent_state[TankState.Y], dx, dy], dtype=np.float32)
             self._bullet_states[agent_idx] = np.vstack((self._bullet_states[agent_idx], new_bullet))
 
             agent_state[TankState.AMMO] -= 1
@@ -304,11 +310,15 @@ class TankEnv(MultiAgentEnv):
                     self.BULLET_RADIUS
                 )
 
-        if self.window is not None and self.clock is not None:
+        if self.render_mode == "human" and self.window is not None and self.clock is not None:
             self.window.blit(canvas, canvas.get_rect())
             pygame.event.pump()
             pygame.display.update()
             self.clock.tick(self.metadata["render_fps"])
+        elif self.render_mode == "rgb_array":
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+            )
 
 
     def close(self):

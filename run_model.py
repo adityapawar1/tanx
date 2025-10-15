@@ -1,5 +1,6 @@
 from ray.rllib.algorithms.ppo import PPO
 from tank_env import TankEnv
+from ray.tune import ExperimentAnalysis
 
 def test_trained_model(checkpoint_path, num_episodes=5):
     ppo = PPO.from_checkpoint(checkpoint_path)
@@ -21,4 +22,12 @@ def test_trained_model(checkpoint_path, num_episodes=5):
     env.close()
 
 if __name__ == '__main__':
-    test_trained_model("checkpoints/episode2", num_episodes=3)
+    analysis = ExperimentAnalysis("./ray_results/tank")
+    best_trial = analysis.get_best_trial(metric="episode_reward_mean", mode="max")
+    if best_trial:
+        checkpoint_path = analysis.get_best_checkpoint(
+            trial=best_trial,
+            metric="episode_reward_mean", mode="max"
+        )
+
+        test_trained_model(checkpoint_path, num_episodes=3)
