@@ -3,31 +3,10 @@ from typing import Dict, List, Optional
 import numpy as np
 import gymnasium as gym
 import pygame
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-class ActionState(IntEnum):
-    RIGHT = 0
-    UP = 1
-    LEFT = 2
-    DOWN = 3
-    INCREASE_ANGLE = 4
-    DECREASE_ANGLE = 5
-    SHOOT = 6
-
-class TankState(IntEnum):
-    X = 0
-    Y = 1
-    GUN_ANGLE = 2
-    AMMO = 3
-    CHARGE = 4
-    IS_ALIVE = 5
-
-class BulletState(IntEnum):
-    X = 0
-    Y = 1
-    DX = 2
-    DY = 3
-
-class TankEnv(gym.Env):
+# TODO: refactor to not use agent_idx and just use agent_id
+class TankEnv(MultiAgentEnv):
     RENDER_FPS = 20
 
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
@@ -50,12 +29,16 @@ class TankEnv(gym.Env):
     KILL_REWARD = 200
     SHOOT_REWARD = 1
 
+    AGENT_PREFIX = "tank"
+
     metadata = {"render_modes": ["human"], "render_fps": RENDER_FPS}
-    def __init__(self, render_mode=None, size=750, players=5):
+    def __init__(self, config=None, render_mode=None, size=750, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
         self.players = players
+        self.agents = self.possible_agents = [self.idx_to_agent_id(i) for i in range(players)]
+
         self._agent_states = np.zeros((players, 6), dtype=np.int32)
         self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float64) for idx in range(players)}
         self._agents_killed = set()
@@ -91,10 +74,23 @@ class TankEnv(gym.Env):
             ActionState.SHOOT: np.array([0, 0, 0]),
         }
 
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.observation_spaces = {agent_id: self.observation_space for agent_id in self.possible_agents}
+        self.action_spaces = {agent_id: self.action_space for agent_id in self.possible_agents}
+
+        try:
+            assert render_mode is None or render_mode in self.metadata["render_modes"]
+        except:
+            raise Exception(f"render mode is bad: {render_mode}")
+
         self.render_mode = render_mode
         self.window = None
         self.clock = None
+
+    def agent_id_to_idx(self, agent_id: str) -> int:
+        return int(agent_id[len(self.AGENT_PREFIX):])
+
+    def idx_to_agent_id(self, agent_idx) -> str:
+        return f"{self.AGENT_PREFIX}{agent_idx}"
 
     def _get_obs(self, agent_idx: int):
         this_agent = self._agent_states[agent_idx]
@@ -110,6 +106,9 @@ class TankEnv(gym.Env):
             "opponents": other_agents,
         }
 
+    def _get_all_obs(self):
+        return {agent_id: self._get_obs(self.agent_id_to_idx(agent_id)) for agent_id in self.agents}
+
     def _get_info(self):
         return {}
 
@@ -122,6 +121,8 @@ class TankEnv(gym.Env):
         charge_time = np.zeros((self.players,1), dtype=np.int32)
         alive_flags = np.ones((self.players,1), dtype=np.int32)
 
+        self.agents = self.possible_agents
+
         self._agent_states = np.hstack((locations, angles, ammo, charge_time, alive_flags))
         self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float64) for idx in range(self.players)}
         self._agents_killed = set()
@@ -129,35 +130,33 @@ class TankEnv(gym.Env):
         if self.render_mode == "human":
             self.render()
 
-        return self._get_obs(0), self._get_info()
+        return self._get_all_obs(), self._get_info()
 
-    def step(self, action):
-        rewards = []
+    def step(self, action_dict):
+        rewards = {}
 
         agents_killed = set()
         for agent_idx in range(self.players):
-            if agent_idx != 0:
-                action = self.action_space.sample()
+            action = action_dict.get(self.idx_to_agent_id(agent_idx), np.zeros(shape=(6,)))
 
             reward, killed = self._step_agent(action, agent_idx)
-            rewards.append(reward)
+            rewards[self.idx_to_agent_id(agent_idx)] = reward
             agents_killed.update(killed)
 
         for agent_idx in agents_killed:
             self._agent_states[agent_idx][TankState.IS_ALIVE] = 0
+            self.agents.remove(self.idx_to_agent_id(agent_idx))
             self._agents_killed.add(agent_idx)
 
-        focused_agent = 0
-        reward = rewards[focused_agent]
-        truncated = False
-        terminated = len(self._agents_killed) == self.players - 1
-        observation = self._get_obs(focused_agent)
+        truncated = {}
+        terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
+        observations = self._get_all_obs()
         info = self._get_info()
 
         if self.render_mode == "human":
             self.render()
 
-        return observation, reward, terminated, truncated, info
+        return observations, rewards, terminateds, truncated, info
 
     def _step_agent(self, action, agent_idx) -> tuple[int, List[int]]:
         agent_state = self._agent_states[agent_idx]
@@ -311,4 +310,27 @@ class TankEnv(gym.Env):
         if self.window is not None:
             pygame.display.quit()
             pygame.quit()
+
+class ActionState(IntEnum):
+    RIGHT = 0
+    UP = 1
+    LEFT = 2
+    DOWN = 3
+    INCREASE_ANGLE = 4
+    DECREASE_ANGLE = 5
+    SHOOT = 6
+
+class TankState(IntEnum):
+    X = 0
+    Y = 1
+    GUN_ANGLE = 2
+    AMMO = 3
+    CHARGE = 4
+    IS_ALIVE = 5
+
+class BulletState(IntEnum):
+    X = 0
+    Y = 1
+    DX = 2
+    DY = 3
 
