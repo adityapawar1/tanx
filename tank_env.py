@@ -11,6 +11,7 @@ class TankEnv(MultiAgentEnv):
 
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
     MAX_AMMO = 3
+    AMMO_REPLENISH_TIME_STEPS = RENDER_FPS * 2
 
     TANK_SPEED = 3
     TANK_SIZE_PIXELS = 30
@@ -27,21 +28,23 @@ class TankEnv(MultiAgentEnv):
     GUN_SIZE_PIXELS = 20
 
     KILL_REWARD = 200
-    SHOOT_REWARD = 1
+    SHOOT_PENALTY = -1
 
     AGENT_PREFIX = "tank"
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
-    def __init__(self, config=None, render_mode=None, size=750, players=4):
+    def __init__(self, config=None, render_mode=None, size=500, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
         self.players = players
         self.possible_agents = [self.idx_to_agent_id(i) for i in range(players)]
 
+        self._current_step = 0
         self._agent_states = np.zeros((self.players, 6), dtype=np.int32)
         self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float32) for idx in range(players)}
         self._agents_killed = set()
+        self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
         self._agent_info = [{"agent_kills": 0, "max_charge": 0} for i in range(self.players)]
 
         single_agent_space_low = np.array([0, 0, 0, 0, 0, 0])
@@ -128,10 +131,13 @@ class TankEnv(MultiAgentEnv):
 
         self.agents = self.possible_agents[:]
 
+        self._current_step = 0
         self._agent_states = np.hstack((locations, angles, ammo, charge_time, alive_flags))
         self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float32) for idx in range(self.players)}
         self._agents_killed = set()
+        self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
         self._agent_info = [{"agent_kills": 0, "max_charge": 0} for _ in range(self.players)]
+
 
         if self.render_mode == "human":
             self.render()
@@ -139,6 +145,7 @@ class TankEnv(MultiAgentEnv):
         return self._get_all_obs(), self._get_all_info()
 
     def step(self, action_dict):
+        self._current_step += 1
         rewards = {}
 
         agents_killed = set()
@@ -155,7 +162,8 @@ class TankEnv(MultiAgentEnv):
             self.agents.remove(self.idx_to_agent_id(agent_idx))
             self._agents_killed.add(agent_idx)
 
-        truncated = {agent_id: False for agent_id in self.possible_agents}
+        time_cutoff = self.RENDER_FPS * 60 > self._current_step
+        truncated = {agent_id: time_cutoff for agent_id in self.agents}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
         terminateds["__all__"] = len(self._agents_killed) == self.players - 1
 
@@ -187,7 +195,6 @@ class TankEnv(MultiAgentEnv):
 
                 if not (0 <= bullet[BulletState.X] < self.size) or not (0 <= bullet[BulletState.Y] < self.size):
                     bullets_to_destroy.append(i)
-                    agent_state[TankState.AMMO] += 1
 
         if len(bullets_to_destroy) > 0:
             self._bullet_states[agent_idx] = np.delete(self._bullet_states[agent_idx], bullets_to_destroy, axis=0)
@@ -230,7 +237,13 @@ class TankEnv(MultiAgentEnv):
             self._bullet_states[agent_idx] = np.vstack((self._bullet_states[agent_idx], new_bullet))
 
             agent_state[TankState.AMMO] -= 1
-            reward += speed
+            reward += speed - self.BASE_BULLET_SPEED + self.SHOOT_PENALTY
+
+        if agent_state[TankState.AMMO] < self.MAX_AMMO:
+            self._ammo_replenish_counters[agent_idx] += 1
+            if self._ammo_replenish_counters[agent_idx] >= self.AMMO_REPLENISH_TIME_STEPS:
+                agent_state[TankState.AMMO] += 1
+                self._ammo_replenish_counters[agent_idx] = 0
 
         return reward, agents_to_kill
 
@@ -301,7 +314,7 @@ class TankEnv(MultiAgentEnv):
 
         for _, bullets in self._bullet_states.items():
             for bullet in bullets:
-                center_x, center_y = bullet[BulletState.X], bullet[BulletState.Y]
+                center_x, center_y = int(bullet[BulletState.X]), int(bullet[BulletState.Y])
 
                 pygame.draw.circle(
                     canvas,

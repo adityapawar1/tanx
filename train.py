@@ -38,7 +38,7 @@ if __name__ == "__main__":
     )
 
     run_config = RunConfig(
-        name="tank-v0",
+        name="tank-small-screen-shoot-penalty-v2",
         storage_path=os.path.abspath("./ray_results"),
         stop={"training_iteration": 1000},
         checkpoint_config=CheckpointConfig(

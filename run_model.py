@@ -1,11 +1,26 @@
-from ray.rllib.algorithms.ppo import PPO
+import os
+from ray.tune.registry import register_env
+from ray.rllib.core import (
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_LEARNER,
+    COMPONENT_RL_MODULE,
+)
+import torch
+from ray.rllib.core.rl_module.rl_module import RLModule
 from tank_env import TankEnv
-from ray.tune import ExperimentAnalysis
 
 def test_trained_model(checkpoint_path, num_episodes=5):
-    ppo = PPO.from_checkpoint(checkpoint_path)
-
     env = TankEnv(render_mode="human")
+
+    policies = {agent_id: RLModule.from_checkpoint(
+        os.path.join(
+            checkpoint_path,
+            COMPONENT_LEARNER_GROUP,
+            COMPONENT_LEARNER,
+            COMPONENT_RL_MODULE,
+            "shared_policy",
+        )
+    ) for agent_id in env.possible_agents}
 
     for episode in range(num_episodes):
         obs, info = env.reset()
@@ -13,7 +28,13 @@ def test_trained_model(checkpoint_path, num_episodes=5):
         while len(env.agents) > 1:
             actions = {}
             for agent_id in env.agents:
-                action = ppo.compute_single_action(obs[agent_id], policy_id="shared_policy")
+                rl_module = policies[agent_id]
+                fwd_outputs= rl_module.forward_inference({'obs': torch.Tensor(obs[agent_id]).unsqueeze(0)})
+                action_dist_class = rl_module.get_inference_action_dist_cls()
+                action_dist = action_dist_class.from_logits(
+                    fwd_outputs["action_dist_inputs"]
+                )
+                action = action_dist.sample()[0].numpy()
                 actions[agent_id] = action
 
             obs, rewards, terminated, truncated, info = env.step(actions)
@@ -22,12 +43,10 @@ def test_trained_model(checkpoint_path, num_episodes=5):
     env.close()
 
 if __name__ == '__main__':
-    analysis = ExperimentAnalysis("./ray_results/tank")
-    best_trial = analysis.get_best_trial(metric="episode_reward_mean", mode="max")
-    if best_trial:
-        checkpoint_path = analysis.get_best_checkpoint(
-            trial=best_trial,
-            metric="episode_reward_mean", mode="max"
-        )
+    register_env("TankEnv-v0", lambda config: TankEnv(config))
+    # local_path = "./ray_results/tank-v0/PPO_TankEnv-v0_dd738_00000_0_2025-10-15_02-32-27/checkpoint_000000"
+    local_path = "./ray_results/tank-timed-ammo-v1/PPO_TankEnv-v0_059e4_00000_0_2025-10-15_03-16-32/checkpoint_000003"
 
-        test_trained_model(checkpoint_path, num_episodes=3)
+    checkpoint_path = os.path.abspath(local_path)
+    test_trained_model(checkpoint_path, num_episodes=3)
+
