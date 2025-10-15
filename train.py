@@ -1,45 +1,41 @@
 import os
-from pprint import pprint
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.env_rendering_and_recording import EnvRenderCallback
-
+from ray import tune
+from ray.tune.registry import register_env
 from tank_env import TankEnv
 
 if __name__ == '__main__':
+    register_env("TankEnv-v0", lambda config: TankEnv(config))
     env = TankEnv()
 
-    config = (
-        PPOConfig()
-        .environment(TankEnv)
-        .multi_agent(
-            policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
-            policies={"shared_policy": (None, env.observation_space, env.action_space, {})}
-        )
-        .callbacks(EnvRenderCallback)
-        .training(
-            train_batch_size=4000,
-            sgd_minibatch_size=128,
-            num_sgd_iter=10,
-            lr=3e-4,
-        )
+    config = {
+        "env": "TankEnv-v0",
+        "framework": "torch",
+        "num_env_runners": 2,
+        "train_batch_size": 4000,
+        "sgd_minibatch_size": 128,
+        "num_sgd_iter": 10,
+        "lr": 3e-4,
+        "gamma": 0.99,
+        "lambda": 0.95,
+        "clip_param": 0.2,
+        "multiagent": {
+            "policies": {
+                "shared_policy": (None, env.observation_space, env.action_space, {})
+            },
+            "policy_mapping_fn": lambda agent_id, *args, **kwargs: "shared_policy",
+        },
+        "evaluation_interval": 10,
+        "evaluation_num_env_runners": 2,
+        "evaluation_duration": 10,
+        "evaluation_duration_unit": "episodes",
+    }
+
+    tune.run(
+        "PPO",
+        config=config,
+        stop={"training_iteration": 1000},
+        checkpoint_freq=50,
+        checkpoint_at_end=True,
+        storage_path=os.path.abspath("./ray_results"),
+        name="tank",
     )
-    config.evaluation(
-        evaluation_interval=1,
-        evaluation_num_env_runners=2,
-        evaluation_duration_unit="episodes",
-        evaluation_duration=10,
-    )
-
-    if config.is_multi_agent:
-        print("Training multi agent environment")
-    else:
-        print("Training single agent environment")
-
-    ppo = config.build_algo()
-
-    for i in range(3):
-        pprint(ppo.train())
-
-        checkpoint_path = os.path.abspath(f"checkpoints/episode{i}")
-        checkpoint_dir = ppo.save(checkpoint_path)
-        print(f"Checkpoint saved at: {checkpoint_dir}")

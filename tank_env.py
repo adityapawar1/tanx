@@ -38,7 +38,6 @@ class TankEnv(MultiAgentEnv):
         self.size = size
         self.players = players
         self.possible_agents = [self.idx_to_agent_id(i) for i in range(players)]
-        self._agent_ids = set(self.possible_agents)
 
         self._agent_states = np.zeros((players, 6), dtype=np.int32)
         self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float64) for idx in range(players)}
@@ -84,14 +83,15 @@ class TankEnv(MultiAgentEnv):
         self.window = None
         self.clock = None
 
-    def get_agent_ids(self) -> set:
-        return set(self.possible_agents)
-
     def agent_id_to_idx(self, agent_id: str) -> int:
         return int(agent_id[len(self.AGENT_PREFIX):])
 
     def idx_to_agent_id(self, agent_idx) -> str:
         return f"{self.AGENT_PREFIX}{agent_idx}"
+
+    def _get_info(self):
+        charge = [state[TankState.CHARGE] for state in self._agent_states]
+        return {"agents_killed": len(self._agents_killed), "max_charge": max(charge), "avg_charge": sum(charge) / len(charge)}
 
     def _get_obs(self, agent_idx: int):
         this_agent = self._agent_states[agent_idx]
@@ -113,9 +113,6 @@ class TankEnv(MultiAgentEnv):
 
     def _get_all_obs(self):
         return {agent_id: self._get_obs(self.agent_id_to_idx(agent_id)) for agent_id in self.agents}
-
-    def _get_info(self):
-        return {}
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
