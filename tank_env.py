@@ -10,7 +10,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 # TODO: add a target that tanks can stand on to get points
 class TankEnv(MultiAgentEnv):
     RENDER_FPS = 20
-    MAX_TIME_SECONDS = 180
+    MAX_TIME_SECONDS = 100
 
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
     MAX_AMMO = 3
@@ -21,7 +21,7 @@ class TankEnv(MultiAgentEnv):
     GUN_ROTATE_SPEED = 5
     TANK_SIZE_FROM_CENTER = TANK_SIZE_PIXELS // 2
 
-    MAX_CHARGE_MULTIPLIER = 8
+    MAX_CHARGE_MULTIPLIER = 5
     MAX_CHARGE_TIME_STEPS = RENDER_FPS * 3
     CHARGE_LOSS_RATE = MAX_CHARGE_TIME_STEPS // RENDER_FPS
     CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) // MAX_CHARGE_TIME_STEPS
@@ -30,15 +30,17 @@ class TankEnv(MultiAgentEnv):
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
-    WIN_REWARD = 2000
-    KILL_REWARD = 1200
-    DEATH_PENALTY = -1000
-    SURVIVAL_REWARD = 2 / RENDER_FPS
-    CHARGE_REWARD_FACTOR = 1
+    WIN_REWARD = 3
+    KILL_REWARD = 6
+    DEATH_PENALTY = -3
+    SURVIVAL_REWARD = 0.02 / RENDER_FPS
+    MOVE_REWARD = 0.04 / RENDER_FPS
+    SHOOT_PENALTY = -0.09
+    BULLET_SPEED_REWARD_FACTOR = 0.008
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
-    def __init__(self, config=None, render_mode=None, size=600, players=4):
+    def __init__(self, config=None, render_mode=None, size=500, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
@@ -110,7 +112,7 @@ class TankEnv(MultiAgentEnv):
             if agent_idx == owner:
                 continue
 
-            bullet_states = np.concat((bullet_states, *bullets))
+            bullet_states = np.concat((bullet_states, bullets.flatten()))
         bullet_states = np.pad(bullet_states, (0, len(self.full_bullet_space_low) - len(bullet_states)))
 
         return np.concat((
@@ -129,7 +131,7 @@ class TankEnv(MultiAgentEnv):
         super().reset(seed=seed)
 
         locations = self.np_random.integers(0, self.size, size=(self.players,2), dtype=np.int32)
-        angles = np.ones((self.players,1), dtype=np.int32) * 90
+        angles = self.np_random.integers(0, 360, size=(self.players,1), dtype=np.int32)
         ammo = np.ones((self.players,1), dtype=np.int32) * self.MAX_AMMO
         charge_time = np.zeros((self.players,1), dtype=np.int32)
         alive_flags = np.ones((self.players,1), dtype=np.int32)
@@ -183,7 +185,7 @@ class TankEnv(MultiAgentEnv):
 
         return observations, rewards, terminateds, truncated, info
 
-    def _step_agent(self, action, agent_idx) -> tuple[int, List[int]]:
+    def _step_agent(self, action, agent_idx) -> tuple[float, List[int]]:
         agent_state = self._agent_states[agent_idx]
         reward = self.SURVIVAL_REWARD
         agents_to_kill = []
@@ -225,17 +227,18 @@ class TankEnv(MultiAgentEnv):
 
                 did_move = did_move or direction[TankState.X] != 0 or direction[TankState.Y] != 0
 
-        if not did_move:
+        if not did_move and agent_state[TankState.AMMO] > 0:
             agent_state[TankState.CHARGE] += 1
             agent_state[TankState.CHARGE] = min(self.MAX_CHARGE_TIME_STEPS, agent_state[TankState.CHARGE])
             self._agent_info[agent_idx]["max_charge"] = max(self._agent_info[agent_idx]["max_charge"], agent_state[TankState.CHARGE])
-            reward += agent_state[TankState.CHARGE] * self.CHARGE_REWARD_FACTOR
         else:
+            reward += self.MOVE_REWARD
             agent_state[TankState.CHARGE] -= self.CHARGE_LOSS_RATE
             agent_state[TankState.CHARGE] = max(0, agent_state[TankState.CHARGE])
 
         if action[ActionState.SHOOT] and agent_state[TankState.AMMO] > 0:
-            speed = self.BASE_BULLET_SPEED * (1 + agent_state[TankState.CHARGE] * self.CHARGE_SPEED_FACTOR)
+            charge_multiplier = 1 + agent_state[TankState.CHARGE] * self.CHARGE_SPEED_FACTOR
+            speed = self.BASE_BULLET_SPEED * charge_multiplier
             gun_angle_rad = np.deg2rad(agent_state[TankState.GUN_ANGLE])
 
             dx, dy = speed * np.cos(gun_angle_rad), speed * np.sin(gun_angle_rad)
@@ -246,7 +249,11 @@ class TankEnv(MultiAgentEnv):
             self._bullet_states[agent_idx] = np.vstack((self._bullet_states[agent_idx], new_bullet))
 
             agent_state[TankState.AMMO] -= 1
-            reward += speed - self.BASE_BULLET_SPEED
+
+            reward += self.SHOOT_PENALTY
+            reward += ((charge_multiplier - 1) * self.BULLET_SPEED_REWARD_FACTOR)
+
+            agent_state[TankState.CHARGE] = 0
 
         if agent_state[TankState.AMMO] < self.MAX_AMMO:
             self._ammo_replenish_counters[agent_idx] += 1
@@ -261,7 +268,7 @@ class TankEnv(MultiAgentEnv):
         dx, dy = bullet[BulletState.DX], bullet[BulletState.DY]
 
         # TODO: maybe dont just int() this
-        total_steps = int(max(abs(dx), abs(dy)))
+        total_steps = int(np.hypot(dx, dy))
         x_step, y_step = dx / total_steps, dy / total_steps
 
         for _ in range(total_steps):

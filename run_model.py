@@ -18,7 +18,7 @@ def test_trained_model(checkpoint_path, num_episodes=5):
             COMPONENT_LEARNER_GROUP,
             COMPONENT_LEARNER,
             COMPONENT_RL_MODULE,
-            "shared_policy",
+            "standard_policy",
         )
     ) for agent_id in env.possible_agents}
 
@@ -44,12 +44,10 @@ def test_trained_model(checkpoint_path, num_episodes=5):
 
 if __name__ == '__main__':
     register_env("TankEnv-v0", lambda config: TankEnv(config))
-    # local_path = "./ray_results/tank-v0/PPO_TankEnv-v0_dd738_00000_0_2025-10-15_02-32-27/checkpoint_000000"
-    # local_path = "./ray_results/tank-timed-ammo-v1/PPO_TankEnv-v0_059e4_00000_0_2025-10-15_03-16-32/checkpoint_000003"
-    # local_path = "./ray_results/tank-new-reward-v2/PPO_TankEnv-v0_7f70f_00000_0_2025-10-15_03-41-25/checkpoint_000000"
-    # local_path = "./ray_results/tank-new-reward-v2/PPO_TankEnv-v0_9230b_00000_0_2025-10-15_12-45-58/checkpoint_000000"
-    # local_path = "./ray_results/tank-no-truncate-reward-v3/PPO_TankEnv-v0_946fc_00000_0_2025-10-15_15-02-02/checkpoint_000001"
-    local_path = "./ray_results/tank-better-reward-v4/PPO_TankEnv-v0_df405_00000_0_2025-10-15_15-18-27/checkpoint_000000"
+    # local_path = "./ray_results/tank-better-reward-v4/PPO_TankEnv-v0_a9856_00000_0_2025-10-15_23-52-20/checkpoint_000004"
+    # local_path = "./ray_results/tank-better-reward-v4/PPO_TankEnv-v0_a9856_00000_0_2025-10-15_23-52-20/checkpoint_000007"
+    # local_path = "./ray_results/tank-better-reward-v4/PPO_TankEnv-v0_f7fe7_00000_0_2025-10-16_00-51-48/checkpoint_000019"
+    local_path = "./ray_results/tank-scaled-reward-v5/PPO_TankEnv-v0_20890_00000_0_2025-10-16_11-37-10/checkpoint_000009"
 
     checkpoint_path = os.path.abspath(local_path)
     test_trained_model(checkpoint_path, num_episodes=3)
