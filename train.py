@@ -28,7 +28,7 @@ if __name__ == "__main__":
     )
 
     run_config = RunConfig(
-        name="tank-new-new-reward-v3",
+        name="tank-better-reward-v4",
         storage_path=os.path.abspath("./ray_results"),
         stop={"training_iteration": 1000},
         checkpoint_config=CheckpointConfig(

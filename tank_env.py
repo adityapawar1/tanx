@@ -6,8 +6,11 @@ import pygame
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 # TODO: refactor to not use agent_idx and just use agent_id
+# TODO: make ts bounce
+# TODO: add a target that tanks can stand on to get points
 class TankEnv(MultiAgentEnv):
     RENDER_FPS = 20
+    MAX_TIME_SECONDS = 180
 
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
     MAX_AMMO = 3
@@ -27,11 +30,11 @@ class TankEnv(MultiAgentEnv):
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
-    WIN_REWARD = 400
-    KILL_REWARD = 200
-    DEATH_PENALTY = -250
-    SURVIVAL_REWARD = 1
-    CHARGE_REWARD_FACTOR = 0.25
+    WIN_REWARD = 2000
+    KILL_REWARD = 1200
+    DEATH_PENALTY = -1000
+    SURVIVAL_REWARD = 2 / RENDER_FPS
+    CHARGE_REWARD_FACTOR = 1
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
@@ -47,7 +50,7 @@ class TankEnv(MultiAgentEnv):
         self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float32) for idx in range(players)}
         self._agents_killed = set()
         self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
-        self._agent_info = [{"agent_kills": 0, "max_charge": 0} for i in range(self.players)]
+        self._agent_info = [{"agent_kills": 0, "max_charge": 0} for _ in range(self.players)]
 
         single_agent_space_low = np.array([0, 0, 0, 0, 0, 0])
         single_agent_space_high = np.array([size - 1, size - 1, 360, self.MAX_AMMO, self.MAX_CHARGE_TIME_STEPS, 1])
@@ -165,7 +168,7 @@ class TankEnv(MultiAgentEnv):
             self._agents_killed.add(agent_idx)
             rewards[self.idx_to_agent_id(agent_idx)] += self.DEATH_PENALTY
 
-        time_cutoff = self._current_step > self.RENDER_FPS * 60
+        time_cutoff = self._current_step > self.RENDER_FPS * self.MAX_TIME_SECONDS
         truncated = {agent_id: time_cutoff for agent_id in self.agents}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
         terminateds["__all__"] = len(self.agents) == 1
