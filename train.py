@@ -1,4 +1,6 @@
+import multiprocessing
 from typing import Optional
+import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.tune import RunConfig, CheckpointConfig
@@ -11,13 +13,56 @@ if __name__ == "__main__":
     register_env("TankEnv-v0", lambda config: TankEnv(config))
     env = TankEnv()
 
+    num_cpus = multiprocessing.cpu_count()
+    ray.init(
+        num_cpus=num_cpus,
+        local_mode=False,
+        ignore_reinit_error=True
+    )
+
     config = (
         PPOConfig()
         .environment("TankEnv-v0")
         .framework("torch")
         .multi_agent(
-            policies={"shared_policy": (None, env.observation_space, env.action_space, {})},
-            policy_mapping_fn=lambda agent_id, *a, **k: "shared_policy",
+            policies={
+                "standard_policy":
+                    (
+                        None,
+                        env.observation_space,
+                        env.action_space,
+                        {
+                        "model": {
+                            "vf_share_layers": True,
+                            "use_lstm": False,
+                            "free_log_std": False,
+                            "fcnet_hiddens": [256, 256],
+                            "fcnet_activation": "relu",
+                        }
+                    }
+                ),
+                "lstm_policy":
+                    (
+                        None,
+                        env.observation_space,
+                        env.action_space,
+                        {
+                        "model": {
+                            "vf_share_layers": True,
+                            "use_lstm": True,
+                            "free_log_std": False,
+                            "fcnet_hiddens": [256, 256],
+                            "fcnet_activation": "relu",
+                        }
+                    }
+                )
+
+            },
+            policy_mapping_fn=lambda agent_id, *a, **k: "lstm_policy" if agent_id in ["tank0", "tank1"] else "shared_policy",
+        )
+        .env_runners(
+            num_env_runners=num_cpus - 1,
+            num_envs_per_env_runner=2
         )
         .evaluation(
             evaluation_interval=10,
@@ -25,6 +70,7 @@ if __name__ == "__main__":
             evaluation_duration=10,
             evaluation_duration_unit="episodes",
         )
+        .resources()
     )
 
     run_config = RunConfig(
