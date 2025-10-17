@@ -49,7 +49,10 @@ if __name__ == '__main__':
     # local_path = "./ray_results/tank-better-reward-v4/PPO_TankEnv-v0_f7fe7_00000_0_2025-10-16_00-51-48/checkpoint_000019"
     # local_path = "./ray_results/tank-scaled-reward-v5/PPO_TankEnv-v0_20890_00000_0_2025-10-16_11-37-10/checkpoint_000009"
     # local_path = "./ray_results/tank-4-player-v6/PPO_TankEnv-v0_33ae0_00000_0_2025-10-16_20-56-03/checkpoint_000006"
-    local_path = "./ray_results/tank-4-player-v6/PPO_TankEnv-v0_33ae0_00000_0_2025-10-16_20-56-03/checkpoint_000007"
+    # local_path = "./ray_results/tank-4-player-v6/PPO_TankEnv-v0_33ae0_00000_0_2025-10-16_20-56-03/checkpoint_000007"
+    local_path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-objective-v6/PPO_TankEnv-v0_1fe7b_00000_0_2025-10-16_22-50-02/checkpoint_000001"
+
+
 
     checkpoint_path = os.path.abspath(local_path)
     test_trained_model(checkpoint_path, num_episodes=3)

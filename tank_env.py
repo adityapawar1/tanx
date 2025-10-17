@@ -30,14 +30,14 @@ class TankEnv(MultiAgentEnv):
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
-    TARGET_WIDTH = 40
+    TARGET_WIDTH = 100
 
     WIN_REWARD = 3
     KILL_REWARD = 7
-    DEATH_PENALTY = -3
+    DEATH_PENALTY = -5
     SURVIVAL_REWARD = 0.02 / RENDER_FPS
-    TARGET_REWARD = 0.01 / RENDER_FPS
     TARGET_REWARD_MULTIPLIER = 2
+    TARGET_DISTANCE_REWARD_MULTIPLIER = 0.1 / RENDER_FPS
     MOVE_REWARD = 0.025 / RENDER_FPS
     SHOOT_PENALTY = -0.1
     BULLET_SPEED_REWARD_FACTOR = 0.0075
@@ -194,13 +194,15 @@ class TankEnv(MultiAgentEnv):
 
         return observations, rewards, terminateds, truncated, info
 
-    def _is_on_target(self, agent_state) -> bool:
+    def _calculate_target_reward(self, agent_state) -> tuple[bool, float]:
         agent_x, agent_y = agent_state[TankState.X], agent_state[TankState.Y]
         target_x, target_y = self._target_state[0], self._target_state[1]
 
         threshold = self.TARGET_WIDTH // 2 + self.TANK_SIZE_FROM_CENTER
+        is_on_target = bool(abs(agent_x - target_x) <= threshold and abs(agent_y - target_y) <= threshold)
+        distance_to_target = max(1, np.hypot(agent_x - target_x, agent_y - target_y))
 
-        return abs(agent_x - target_x) <= threshold and abs(agent_y - target_y) <= threshold
+        return is_on_target, (1/distance_to_target) * self.TARGET_DISTANCE_REWARD_MULTIPLIER
 
     def _step_agent(self, action, agent_idx) -> tuple[float, List[int]]:
         agent_state = self._agent_states[agent_idx]
@@ -279,10 +281,11 @@ class TankEnv(MultiAgentEnv):
                 agent_state[TankState.AMMO] += 1
                 self._ammo_replenish_counters[agent_idx] = 0
 
-        if self._is_on_target(agent_state):
+        is_on_target, target_reward = self._calculate_target_reward(agent_state)
+        reward += target_reward
+        if is_on_target:
             reward *= self.TARGET_REWARD_MULTIPLIER
             reward = max(reward, 0)
-            reward += self.TARGET_REWARD
 
         return reward, agents_to_kill
 

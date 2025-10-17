@@ -21,7 +21,7 @@ if __name__ == "__main__":
     resources = ray.cluster_resources()
     total_cpus = int(resources.get("CPU", 1))
     print(f"Detected {total_cpus} total CPUs across cluster.")
-    num_env_runners = max(1, total_cpus - 2)
+    num_env_runners = max(1, total_cpus - 1)
 
     config = (
         PPOConfig()
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_env_runners=num_env_runners,
-            num_envs_per_env_runner=5,
+            num_envs_per_env_runner=8,
         )
         .resources(num_cpus_per_worker=1)
     )
