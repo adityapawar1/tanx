@@ -21,20 +21,18 @@ if __name__ == "__main__":
     resources = ray.cluster_resources()
     total_cpus = int(resources.get("CPU", 1))
     print(f"Detected {total_cpus} total CPUs across cluster.")
-    num_env_runners = max(1, total_cpus - 1)
+    num_env_runners = max(1, total_cpus - 2)
 
     config = (
         APPOConfig()
         .training(
-            lr=5e-5,
-            train_batch_size_per_learner=8000,
-            num_epochs=2,
+            lr=1e-5,
+            train_batch_size_per_learner=32000,
+            num_epochs=3,
             vtrace=True,
-            # sgd_minibatch_size=1012,
 
             lambda_=0.98,
             clip_param=0.2,
-            # vf_clip_param=10.0,
 
             vf_loss_coeff=0.5,
             entropy_coeff=0.015,
