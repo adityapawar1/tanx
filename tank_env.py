@@ -24,23 +24,23 @@ class TankEnv(MultiAgentEnv):
     MAX_CHARGE_MULTIPLIER = 5
     MAX_CHARGE_TIME_STEPS = RENDER_FPS * 3
     CHARGE_LOSS_RATE = MAX_CHARGE_TIME_STEPS // RENDER_FPS
-    CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) // MAX_CHARGE_TIME_STEPS
+    CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) / MAX_CHARGE_TIME_STEPS
 
     BASE_BULLET_SPEED = 20
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
-    TARGET_WIDTH = 100
+    TARGET_WIDTH = 75
 
     WIN_REWARD = 3
     KILL_REWARD = 7
     DEATH_PENALTY = -5
     SURVIVAL_REWARD = 0.02 / RENDER_FPS
-    TARGET_REWARD_MULTIPLIER = 2
-    TARGET_DISTANCE_REWARD_MULTIPLIER = 0.1 / RENDER_FPS
+    TARGET_REWARD = 0.04 / RENDER_FPS
+    TARGET_DISTANCE_REWARD_MULTIPLIER = 0.04 / RENDER_FPS
     MOVE_REWARD = 0.025 / RENDER_FPS
-    SHOOT_PENALTY = -0.1
-    BULLET_SPEED_REWARD_FACTOR = 0.0075
+    SHOOT_PENALTY = -0.05
+    BULLET_SPEED_REWARD_FACTOR = 0.005
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
@@ -59,23 +59,24 @@ class TankEnv(MultiAgentEnv):
         self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
         self._agent_info = [{"agent_kills": 0, "max_charge": 0} for _ in range(self.players)]
 
-        single_agent_space_low = np.array([0, 0, 0, 0, 0, 0])
-        single_agent_space_high = np.array([size - 1, size - 1, 360, self.MAX_AMMO, self.MAX_CHARGE_TIME_STEPS, 1])
+        targeted_agent_space_low = np.array([0, 0, 0, 0, 0, 0])
+        opponent_agent_space_low = np.array([-(size - 1), -(size - 1), 0, 0, 0, 0])
+        agent_space_high = np.array([size - 1, size - 1, 360, self.MAX_AMMO, self.MAX_CHARGE_TIME_STEPS, 1])
 
-        single_bullet_space_low = np.array([0, 0, -self.MAX_BULLET_COMPONENT_SPEED_PPS, -self.MAX_BULLET_COMPONENT_SPEED_PPS])
+        single_bullet_space_low = np.array([-(size - 1), -(size - 1), -self.MAX_BULLET_COMPONENT_SPEED_PPS, -self.MAX_BULLET_COMPONENT_SPEED_PPS])
         single_bullet_space_high = np.array([size - 1, size - 1, self.MAX_BULLET_COMPONENT_SPEED_PPS, self.MAX_BULLET_COMPONENT_SPEED_PPS])
 
-        self.target_space_low = np.array([size * 0.1, size * 0.1])
-        self.target_space_high = np.array([size * 0.9, size * 0.9])
-        self.full_agent_space_low = np.tile(single_agent_space_low, players)
-        self.full_agent_space_high = np.tile(single_agent_space_high, players)
+        self.target_space_low = np.array([-(size - 1), -(size - 1)])
+        self.target_space_high = np.array([size + 1, size + 1])
+        self.full_agent_space_low = np.hstack((targeted_agent_space_low, np.tile(opponent_agent_space_low, players - 1)))
+        self.full_agent_space_high = np.tile(agent_space_high, players)
         self.full_bullet_space_low = np.tile(single_bullet_space_low, (players - 1) * self.MAX_AMMO)
         self.full_bullet_space_high = np.tile(single_bullet_space_high, (players - 1) * self.MAX_AMMO)
 
         self.observation_space = gym.spaces.Box(
-            low=np.concat((self.full_agent_space_low, self.target_space_low, self.full_bullet_space_low)),
-            high=np.concat((self.full_agent_space_high, self.target_space_high, self.full_bullet_space_high)),
-            shape=(len(self.full_agent_space_low) + len(self.target_space_low) + len(self.full_bullet_space_low),),
+            low=np.concat((self.target_space_low, self.full_agent_space_low, self.full_bullet_space_low)),
+            high=np.concat((self.target_space_high, self.full_agent_space_high, self.full_bullet_space_high)),
+            shape=(len(self.target_space_low) + len(self.full_agent_space_low) + len(self.full_bullet_space_low),),
             dtype=np.float32
         )
 
@@ -112,21 +113,53 @@ class TankEnv(MultiAgentEnv):
 
     def _get_obs(self, agent_idx: int):
         this_agent = self._agent_states[agent_idx]
-        other_agents = np.delete(self._agent_states, agent_idx, axis=0).flatten()
+        this_agent_pos = np.array([this_agent[TankState.X], this_agent[TankState.Y]])
+        this_agent_angle_deg = this_agent[TankState.GUN_ANGLE]
+        this_agent_angle_rad = np.deg2rad(this_agent[TankState.GUN_ANGLE])
 
-        bullet_states = np.array([])
+        rotation_matrix = np.array([
+            [np.cos(-this_agent_angle_rad), -np.sin(-this_agent_angle_rad)],
+            [np.sin(-this_agent_angle_rad), np.cos(-this_agent_angle_rad)]
+        ])
+
+        other_agents = np.delete(self._agent_states, agent_idx, axis=0)
+        other_agents_relative = []
+        for other_agent in other_agents:
+            pos = np.array([other_agent[TankState.X], other_agent[TankState.Y]])
+            angle_deg = other_agent[TankState.GUN_ANGLE]
+            relative_pos = pos - this_agent_pos
+            angled_pos = np.matmul(rotation_matrix, relative_pos.T).T
+            relative_angle = (angle_deg - this_agent_angle_deg + 360) % 360
+            relative_agent_state = np.hstack((angled_pos, relative_angle, other_agent[TankState.GUN_ANGLE+1:]))
+
+            other_agents_relative.extend(relative_agent_state)
+        other_agents_relative = np.array(other_agents_relative)
+
+        target_relative = self._target_state - this_agent_pos
+        target_relative = np.matmul(rotation_matrix, target_relative.T).T
+
+        bullet_states_relative = []
         for owner, bullets in self._bullet_states.items():
             if agent_idx == owner:
                 continue
 
-            bullet_states = np.concat((bullet_states, bullets.flatten()))
-        bullet_states = np.pad(bullet_states, (0, len(self.full_bullet_space_low) - len(bullet_states)))
+            for bullet in bullets:
+                pos = np.array([bullet[BulletState.X], bullet[BulletState.Y]])
+                velocity = np.array([bullet[BulletState.DX], bullet[BulletState.DY]])
+                relative_pos = pos - this_agent_pos
+                angled_pos = np.matmul(rotation_matrix, relative_pos.T).T
+                angled_speed = np.matmul(rotation_matrix, velocity.T).T
+                relative_state = np.hstack((angled_pos, angled_speed))
+
+                bullet_states_relative.extend(relative_state)
+
+        bullet_states_relative = np.pad(bullet_states_relative, (0, len(self.full_bullet_space_low) - len(bullet_states_relative)))
 
         return np.concat((
+            target_relative,
             this_agent,
-            self._target_state,
-            other_agents,
-            bullet_states,
+            other_agents_relative,
+            bullet_states_relative,
         ))
 
     def _get_all_info(self):
@@ -185,8 +218,8 @@ class TankEnv(MultiAgentEnv):
         time_cutoff = self._current_step > self.RENDER_FPS * self.MAX_TIME_SECONDS
         truncated = {agent_id: time_cutoff for agent_id in self.agents}
         terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_killed for agent_id in self.possible_agents}
-        terminateds["__all__"] = len(self.agents) == 1
-        if terminateds["__all__"]:
+        terminateds["__all__"] = len(self.agents) <= 1
+        if terminateds["__all__"] and len(self.agents) == 1:
             rewards[self.agents[0]] += self.WIN_REWARD
 
         if self.render_mode == "human":
@@ -281,11 +314,10 @@ class TankEnv(MultiAgentEnv):
                 agent_state[TankState.AMMO] += 1
                 self._ammo_replenish_counters[agent_idx] = 0
 
-        is_on_target, target_reward = self._calculate_target_reward(agent_state)
-        reward += target_reward
+        is_on_target, target_distance_reward = self._calculate_target_reward(agent_state)
+        reward += target_distance_reward
         if is_on_target:
-            reward *= self.TARGET_REWARD_MULTIPLIER
-            reward = max(reward, 0)
+            reward += self.TARGET_REWARD
 
         return reward, agents_to_kill
 
@@ -295,7 +327,7 @@ class TankEnv(MultiAgentEnv):
         dx, dy = bullet[BulletState.DX], bullet[BulletState.DY]
 
         # TODO: maybe dont just int() this
-        total_steps = int(np.hypot(dx, dy))
+        total_steps = max(1, int(np.hypot(dx, dy)))
         x_step, y_step = dx / total_steps, dy / total_steps
 
         for _ in range(total_steps):
@@ -329,12 +361,10 @@ class TankEnv(MultiAgentEnv):
         canvas = pygame.Surface((self.size, self.size))
         canvas.fill((255, 255, 255))
 
-        target_top, target_left = self._target_state[1] - self.TARGET_WIDTH // 2, self._target_state[0] - self.TARGET_WIDTH // 2
-        pygame.draw.rect(
-            canvas,
-            (0, 111, 230),
-            pygame.Rect(target_top, target_left, self.TARGET_WIDTH, self.TARGET_WIDTH),
-        )
+        target_left = self._target_state[0] - self.TARGET_WIDTH // 2
+        target_top = self._target_state[1] - self.TARGET_WIDTH // 2
+        pygame.draw.rect(canvas, (0, 111, 230),
+                        pygame.Rect(target_left, target_top, self.TARGET_WIDTH, self.TARGET_WIDTH))
 
         for agent_idx in range(self.players):
             agent_state = self._agent_states[agent_idx]

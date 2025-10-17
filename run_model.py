@@ -38,6 +38,7 @@ def test_trained_model(checkpoint_path, num_episodes=5):
                 actions[agent_id] = action
 
             obs, rewards, terminated, truncated, info = env.step(actions)
+            print(obs)
 
 
     env.close()
