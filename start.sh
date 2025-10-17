@@ -2,7 +2,7 @@
 
 if [ "$1" == "worker" ]; then
 	echo "Starting worker node"
-	ray start --address="$2:6379"
+	RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1 ray start --address="$2:6379"
 else
 	echo "Starting worker head"
 	ray start --head --node-ip-address="$2" --port=6379
