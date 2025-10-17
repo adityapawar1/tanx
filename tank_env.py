@@ -164,6 +164,9 @@ class TankEnv(MultiAgentEnv):
                 rewards[self.idx_to_agent_id(agent_idx)] = reward
             agents_killed.update(killed)
 
+        observations = self._get_all_obs()
+        info = self._get_all_info()
+
         for agent_idx in agents_killed:
             self._agent_states[agent_idx][TankState.IS_ALIVE] = 0
             self.agents.remove(self.idx_to_agent_id(agent_idx))
@@ -176,9 +179,6 @@ class TankEnv(MultiAgentEnv):
         terminateds["__all__"] = len(self.agents) == 1
         if terminateds["__all__"]:
             rewards[self.agents[0]] += self.WIN_REWARD
-
-        observations = self._get_all_obs()
-        info = self._get_all_info()
 
         if self.render_mode == "human":
             self.render()

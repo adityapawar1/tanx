@@ -16,7 +16,7 @@ if __name__ == "__main__":
     env = TankEnv()
 
     num_cpus = multiprocessing.cpu_count()
-    ray.init(_node_ip_address='pawar')
+    ray.init(address="auto")
 
     resources = ray.cluster_resources()
     total_cpus = int(resources.get("CPU", 1))
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_env_runners=num_env_runners,
-            num_envs_per_env_runner=2,
+            num_envs_per_env_runner=5,
         )
         .resources(num_cpus_per_worker=1)
     )
