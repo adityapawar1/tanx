@@ -30,17 +30,21 @@ class TankEnv(MultiAgentEnv):
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
+    TARGET_WIDTH = 40
+
     WIN_REWARD = 3
-    KILL_REWARD = 6
+    KILL_REWARD = 7
     DEATH_PENALTY = -3
     SURVIVAL_REWARD = 0.02 / RENDER_FPS
-    MOVE_REWARD = 0.04 / RENDER_FPS
-    SHOOT_PENALTY = -0.09
-    BULLET_SPEED_REWARD_FACTOR = 0.008
+    TARGET_REWARD = 0.01 / RENDER_FPS
+    TARGET_REWARD_MULTIPLIER = 2
+    MOVE_REWARD = 0.025 / RENDER_FPS
+    SHOOT_PENALTY = -0.1
+    BULLET_SPEED_REWARD_FACTOR = 0.0075
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
-    def __init__(self, config=None, render_mode=None, size=500, players=4):
+    def __init__(self, config=None, render_mode=None, size=700, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
@@ -49,6 +53,7 @@ class TankEnv(MultiAgentEnv):
 
         self._current_step = 0
         self._agent_states = np.zeros((self.players, 6), dtype=np.int32)
+        self._target_state = np.zeros((2,), dtype=np.int32)
         self._bullet_states: Dict[int, np.ndarray] = {idx: np.empty((0, 4), dtype=np.float32) for idx in range(players)}
         self._agents_killed = set()
         self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
@@ -60,15 +65,17 @@ class TankEnv(MultiAgentEnv):
         single_bullet_space_low = np.array([0, 0, -self.MAX_BULLET_COMPONENT_SPEED_PPS, -self.MAX_BULLET_COMPONENT_SPEED_PPS])
         single_bullet_space_high = np.array([size - 1, size - 1, self.MAX_BULLET_COMPONENT_SPEED_PPS, self.MAX_BULLET_COMPONENT_SPEED_PPS])
 
+        self.target_space_low = np.array([size * 0.1, size * 0.1])
+        self.target_space_high = np.array([size * 0.9, size * 0.9])
         self.full_agent_space_low = np.tile(single_agent_space_low, players)
         self.full_agent_space_high = np.tile(single_agent_space_high, players)
         self.full_bullet_space_low = np.tile(single_bullet_space_low, (players - 1) * self.MAX_AMMO)
         self.full_bullet_space_high = np.tile(single_bullet_space_high, (players - 1) * self.MAX_AMMO)
 
         self.observation_space = gym.spaces.Box(
-            low=np.concat((self.full_agent_space_low, self.full_bullet_space_low)),
-            high=np.concat((self.full_agent_space_high, self.full_bullet_space_high)),
-            shape=(len(self.full_agent_space_low) + len(self.full_bullet_space_low),),
+            low=np.concat((self.full_agent_space_low, self.target_space_low, self.full_bullet_space_low)),
+            high=np.concat((self.full_agent_space_high, self.target_space_high, self.full_bullet_space_high)),
+            shape=(len(self.full_agent_space_low) + len(self.target_space_low) + len(self.full_bullet_space_low),),
             dtype=np.float32
         )
 
@@ -117,6 +124,7 @@ class TankEnv(MultiAgentEnv):
 
         return np.concat((
             this_agent,
+            self._target_state,
             other_agents,
             bullet_states,
         ))
@@ -131,6 +139,7 @@ class TankEnv(MultiAgentEnv):
         super().reset(seed=seed)
 
         locations = self.np_random.integers(0, self.size, size=(self.players,2), dtype=np.int32)
+        target = self.np_random.integers(int(self.size * 0.1), int(self.size * 0.9), size=(2,), dtype=np.int32)
         angles = self.np_random.integers(0, 360, size=(self.players,1), dtype=np.int32)
         ammo = np.ones((self.players,1), dtype=np.int32) * self.MAX_AMMO
         charge_time = np.zeros((self.players,1), dtype=np.int32)
@@ -140,11 +149,11 @@ class TankEnv(MultiAgentEnv):
 
         self._current_step = 0
         self._agent_states = np.hstack((locations, angles, ammo, charge_time, alive_flags))
+        self._target_state = target
         self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float32) for idx in range(self.players)}
         self._agents_killed = set()
         self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
         self._agent_info = [{"agent_kills": 0, "max_charge": 0} for _ in range(self.players)]
-
 
         if self.render_mode == "human":
             self.render()
@@ -185,10 +194,19 @@ class TankEnv(MultiAgentEnv):
 
         return observations, rewards, terminateds, truncated, info
 
+    def _is_on_target(self, agent_state) -> bool:
+        agent_x, agent_y = agent_state[TankState.X], agent_state[TankState.Y]
+        target_x, target_y = self._target_state[0], self._target_state[1]
+
+        threshold = self.TARGET_WIDTH // 2 + self.TANK_SIZE_FROM_CENTER
+
+        return abs(agent_x - target_x) <= threshold and abs(agent_y - target_y) <= threshold
+
     def _step_agent(self, action, agent_idx) -> tuple[float, List[int]]:
         agent_state = self._agent_states[agent_idx]
         reward = self.SURVIVAL_REWARD
         agents_to_kill = []
+
 
         bullets_to_destroy: List[int] = []
         for i, bullet in enumerate(self._bullet_states[agent_idx]):
@@ -261,7 +279,13 @@ class TankEnv(MultiAgentEnv):
                 agent_state[TankState.AMMO] += 1
                 self._ammo_replenish_counters[agent_idx] = 0
 
+        if self._is_on_target(agent_state):
+            reward *= self.TARGET_REWARD_MULTIPLIER
+            reward = max(reward, 0)
+            reward += self.TARGET_REWARD
+
         return reward, agents_to_kill
+
 
     def _check_bullet_collision(self, bullet, owner):
         bullet_x, bullet_y = bullet[BulletState.X], bullet[BulletState.Y]
@@ -301,6 +325,13 @@ class TankEnv(MultiAgentEnv):
 
         canvas = pygame.Surface((self.size, self.size))
         canvas.fill((255, 255, 255))
+
+        target_top, target_left = self._target_state[1] - self.TARGET_WIDTH // 2, self._target_state[0] - self.TARGET_WIDTH // 2
+        pygame.draw.rect(
+            canvas,
+            (0, 111, 230),
+            pygame.Rect(target_top, target_left, self.TARGET_WIDTH, self.TARGET_WIDTH),
+        )
 
         for agent_idx in range(self.players):
             agent_state = self._agent_states[agent_idx]

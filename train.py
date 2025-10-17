@@ -55,7 +55,7 @@ if __name__ == "__main__":
     )
 
     run_config = RunConfig(
-        name="tank-4-player-v6",
+        name="tank-target-objective-v6",
         # storage_path=os.path.abspath("./ray_results"),
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
