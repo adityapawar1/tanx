@@ -4,7 +4,7 @@ import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.tune import RunConfig, CheckpointConfig
-from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.appo import APPOConfig
 from tank_env import TankEnv
 import dotenv
 
@@ -24,8 +24,27 @@ if __name__ == "__main__":
     num_env_runners = max(1, total_cpus - 1)
 
     config = (
-        PPOConfig()
+        APPOConfig()
+        .training(
+            lr=5e-5,
+            train_batch_size_per_learner=8000,
+            num_epochs=2,
+            vtrace=True,
+            # sgd_minibatch_size=1012,
+
+            lambda_=0.98,
+            clip_param=0.2,
+            # vf_clip_param=10.0,
+
+            vf_loss_coeff=0.5,
+            entropy_coeff=0.015,
+        )
         .environment("TankEnv-v0")
+        .env_runners(
+            num_env_runners=num_env_runners,
+            num_envs_per_env_runner=8,
+            rollout_fragment_length="auto"
+        )
         .framework("torch")
         .multi_agent(
             policies={
@@ -47,16 +66,10 @@ if __name__ == "__main__":
             },
             policy_mapping_fn=lambda agent_id, *a, **k: "standard_policy",
         )
-        .env_runners(
-            num_env_runners=num_env_runners,
-            num_envs_per_env_runner=8,
-        )
-        .resources(num_cpus_per_worker=1)
     )
 
     run_config = RunConfig(
-        name="tank-better-reward-v8",
-        # storage_path=os.path.abspath("./ray_results"),
+        name="tank-hyperparams-v9",
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
         checkpoint_config=CheckpointConfig(

@@ -31,21 +31,21 @@ class TankEnv(MultiAgentEnv):
     BULLET_RADIUS = 5
     GUN_SIZE_PIXELS = 20
 
-    TARGET_WIDTH = 75
+    TARGET_WIDTH = 60
 
     WIN_REWARD = 3
     KILL_REWARD = 9
-    DEATH_PENALTY = -5
+    DEATH_PENALTY = -3
     SURVIVAL_REWARD = 0.02 / RENDER_FPS
     TARGET_REWARD = 0.02 / RENDER_FPS
     TARGET_DISTANCE_REWARD_MULTIPLIER = 0.08 / RENDER_FPS
     MOVE_REWARD = 0.025 / RENDER_FPS
-    SHOOT_PENALTY = -0.005
+    SHOOT_PENALTY = -0.002
     BULLET_SPEED_REWARD_FACTOR = 0.075
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
-    def __init__(self, config=None, render_mode=None, size=700, players=4):
+    def __init__(self, config=None, render_mode=None, size=500, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
