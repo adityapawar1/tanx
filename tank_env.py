@@ -24,7 +24,7 @@ class TankEnv(MultiAgentEnv):
 
     MAX_CHARGE_MULTIPLIER = 4
     MAX_CHARGE_TIME_STEPS = RENDER_FPS * 4
-    CHARGE_LOSS_RATE = MAX_CHARGE_TIME_STEPS // RENDER_FPS
+    CHARGE_LOSS_RATE = (MAX_CHARGE_TIME_STEPS * 2) // RENDER_FPS
     CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) / MAX_CHARGE_TIME_STEPS
 
     BASE_BULLET_SPEED = 20
@@ -33,13 +33,13 @@ class TankEnv(MultiAgentEnv):
 
     TARGET_WIDTH = 60
 
-    WIN_REWARD = 3
-    KILL_REWARD = 9
+    WIN_REWARD = 4
+    KILL_REWARD = 10
     DEATH_PENALTY = -3
     SURVIVAL_REWARD = 0.02 / RENDER_FPS
-    TARGET_REWARD = 0.02 / RENDER_FPS
-    TARGET_DISTANCE_REWARD_MULTIPLIER = 0.08 / RENDER_FPS
-    MOVE_REWARD = 0.025 / RENDER_FPS
+    TARGET_REWARD = 0.05 / RENDER_FPS
+    TARGET_DISTANCE_REWARD_MULTIPLIER = 1.2 / RENDER_FPS
+    MOVE_REWARD = 0.008 / RENDER_FPS
     SHOOT_PENALTY = -0.002
     BULLET_SPEED_REWARD_FACTOR = 0.075
 
@@ -157,6 +157,17 @@ class TankEnv(MultiAgentEnv):
 
         bullet_states_relative = np.pad(bullet_states_relative, (0, len(self.full_bullet_space_low) - len(bullet_states_relative)))
 
+        # if agent_idx == 0:
+        #     print(f"{target_relative=}")
+        #     print(f"{this_agent=}")
+        #     for i in range(self.players - 1):
+        #         state = other_agents_relative[i*6:(i+1)*6]
+        #         print(f"agent {i}: pos=({state[0]:.1f}, {state[1]:.1f}) angle={state[2]:.1f} ammo={state[3]} charge={state[4]} alive={state[5]}")
+        #
+        #     for i in range((len(bullet_states_relative)) // 4):
+        #         state = bullet_states_relative[i*4:(i+1)*4]
+        #         print(f"bullet {i}: pos=({state[0]:.1f}, {state[1]:.1f}) speed=({state[2]:.1f}, {state[3]:.1f})")
+
         return np.concat((
             target_relative,
             this_agent,
@@ -194,6 +205,7 @@ class TankEnv(MultiAgentEnv):
         if self.render_mode == "human":
             self.render()
 
+
         return self._get_all_obs(), self._get_all_info()
 
     def step(self, action_dict):
@@ -228,6 +240,8 @@ class TankEnv(MultiAgentEnv):
         if self.render_mode == "human":
             self.render()
 
+        print(f"reward={rewards['tank0']}")
+
         return observations, rewards, terminateds, truncated, info
 
     def _calculate_target_reward(self, agent_state) -> tuple[bool, float]:
@@ -236,7 +250,7 @@ class TankEnv(MultiAgentEnv):
 
         threshold = self.TARGET_WIDTH // 2 + self.TANK_SIZE_FROM_CENTER
         is_on_target = bool(abs(agent_x - target_x) <= threshold and abs(agent_y - target_y) <= threshold)
-        distance_to_target = max(1, np.hypot(agent_x - target_x, agent_y - target_y))
+        distance_to_target = max(1, np.hypot(agent_x - target_x, agent_y - target_y) * 0.5)
 
         return is_on_target, (1/distance_to_target) * self.TARGET_DISTANCE_REWARD_MULTIPLIER
 
@@ -244,7 +258,6 @@ class TankEnv(MultiAgentEnv):
         agent_state = self._agent_states[agent_idx]
         reward = self.SURVIVAL_REWARD
         agents_to_kill = []
-
 
         bullets_to_destroy: List[int] = []
         for i, bullet in enumerate(self._bullet_states[agent_idx]):
@@ -322,6 +335,9 @@ class TankEnv(MultiAgentEnv):
                 self._ammo_replenish_counters[agent_idx] = 0
 
         is_on_target, target_distance_reward = self._calculate_target_reward(agent_state)
+        if agent_idx == 0:
+            print(f"on target: {is_on_target}, target distance reward: {target_distance_reward:.4f}")
+
         reward += target_distance_reward
         if is_on_target:
             reward += self.TARGET_REWARD

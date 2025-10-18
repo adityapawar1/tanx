@@ -47,8 +47,8 @@ if __name__ == '__main__':
     # local_path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-objective-v6/PPO_TankEnv-v0_1fe7b_00000_0_2025-10-16_22-50-02/checkpoint_000001"
     # local_path = "./ray_results/tank-relative-obs-v7/PPO_TankEnv-v0_1cc5e_00000_0_2025-10-17_03-36-17/checkpoint_000027"
     local_path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_0ce0a_00000_0_2025-10-17_16-00-18/checkpoint_000001"
-
-
+    local_path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_0ce0a_00000_0_2025-10-17_16-00-18/checkpoint_000002"
+    local_path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_c17d3_00000_0_2025-10-17_18-57-09/checkpoint_000014"
 
     checkpoint_path = os.path.abspath(local_path)
     test_trained_model(checkpoint_path, num_episodes=3)

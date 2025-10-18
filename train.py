@@ -28,7 +28,7 @@ if __name__ == "__main__":
         .training(
             lr=1e-5,
             train_batch_size_per_learner=32000,
-            num_epochs=3,
+            num_epochs=1,
             vtrace=True,
 
             lambda_=0.98,
