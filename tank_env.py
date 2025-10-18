@@ -239,7 +239,7 @@ class TankEnv(MultiAgentEnv):
 
         time_cutoff = self._current_step > self.RENDER_FPS * self.MAX_TIME_SECONDS
         truncated = {agent_id: time_cutoff for agent_id in self.agents}
-        terminateds = {agent_id: self.agent_id_to_idx(agent_id) in agents_hit for agent_id in self.possible_agents}
+        terminateds = {agent_id: self.agent_id_to_idx(agent_id) in self._agents_killed for agent_id in self.possible_agents}
         terminateds["__all__"] = len(self.agents) <= 1
         if terminateds["__all__"] and len(self.agents) == 1:
             rewards[self.agents[0]] += self.WIN_REWARD

@@ -72,7 +72,7 @@ if __name__ == "__main__":
     config.observation_filter = "MeanStdFilter"
 
     run_config = RunConfig(
-        name="tank-hyperparams-v9",
+        name="tank-target-regen-v10",
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
         checkpoint_config=CheckpointConfig(
