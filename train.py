@@ -33,9 +33,11 @@ if __name__ == "__main__":
 
             lambda_=0.98,
             clip_param=0.2,
+            grad_clip=40.0,
+            grad_clip_by="global_norm",
 
             vf_loss_coeff=0.5,
-            entropy_coeff=0.015,
+            entropy_coeff=0.001,
         )
         .environment("TankEnv-v0")
         .env_runners(
