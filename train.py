@@ -26,7 +26,7 @@ if __name__ == "__main__":
     config = (
         APPOConfig()
         .training(
-            lr=1e-5,
+            lr=5e-6,
             train_batch_size_per_learner=32000,
             num_epochs=1,
             vtrace=True,
