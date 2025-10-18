@@ -26,10 +26,11 @@ if __name__ == "__main__":
     config = (
         APPOConfig()
         .training(
-            lr=5e-6,
-            train_batch_size_per_learner=32000,
+            lr=1e-7,
+            train_batch_size_per_learner=24000,
             num_epochs=1,
             vtrace=True,
+            use_kl_loss=False,
 
             lambda_=0.98,
             clip_param=0.2,
@@ -67,6 +68,8 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda agent_id, *a, **k: "standard_policy",
         )
     )
+
+    config.observation_filter = "MeanStdFilter"
 
     run_config = RunConfig(
         name="tank-hyperparams-v9",
