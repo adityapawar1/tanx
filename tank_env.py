@@ -240,8 +240,6 @@ class TankEnv(MultiAgentEnv):
         if self.render_mode == "human":
             self.render()
 
-        print(f"reward={rewards['tank0']}")
-
         return observations, rewards, terminateds, truncated, info
 
     def _calculate_target_reward(self, agent_state) -> tuple[bool, float]:
@@ -335,8 +333,6 @@ class TankEnv(MultiAgentEnv):
                 self._ammo_replenish_counters[agent_idx] = 0
 
         is_on_target, target_distance_reward = self._calculate_target_reward(agent_state)
-        if agent_idx == 0:
-            print(f"on target: {is_on_target}, target distance reward: {target_distance_reward:.4f}")
 
         reward += target_distance_reward
         if is_on_target:
