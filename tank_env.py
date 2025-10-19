@@ -18,39 +18,39 @@ class TankEnv(MultiAgentEnv):
     TANK_SIZE_FROM_CENTER = TANK_SIZE_PIXELS // 2
 
     MAX_CHARGE_MULTIPLIER = 4
-    MAX_CHARGE_TIME_STEPS = RENDER_FPS * 4
+    MAX_CHARGE_TIME_STEPS = RENDER_FPS * 2
     CHARGE_LOSS_RATE = (MAX_CHARGE_TIME_STEPS * 2) // RENDER_FPS
     CHARGE_SPEED_FACTOR = (MAX_CHARGE_MULTIPLIER - 1) / MAX_CHARGE_TIME_STEPS
 
     BULLET_RADIUS = 5
-    BASE_BULLET_SPEED = 12
+    BASE_BULLET_SPEED = 10
     GUN_SIZE_PIXELS = 20
     GUN_ROTATE_SPEED = 6
     SHOOT_COOLDOWN = int(0.2 * RENDER_FPS)
     MAX_BULLET_COMPONENT_SPEED_PPS = 300
     MAX_AMMO = 3
-    AMMO_REPLENISH_TIME_STEPS = RENDER_FPS * 2
+    AMMO_REPLENISH_TIME_STEPS = RENDER_FPS * 1.5
 
+    TARGET_WIDTH = 100
+    TARGET_SPEED_FACTOR = 1.4
+    TARGET_REGEN_SECONDS = 4
 
-    TARGET_WIDTH = 200
-    TARGET_SPEED_FACTOR = 1.25
-    TARGET_REGEN_SECONDS = 5
-
-    WIN_REWARD = 6.0
-    KILL_REWARD = 10.0
-    DEATH_PENALTY = -3.0
-    HIT_REWARD = 5.0
-    TARGET_REGEN_REWARD = 4.0
+    WIN_REWARD = 5.0
+    KILL_REWARD = 9.0
+    DEATH_PENALTY = -9.0
+    HURT_PENALTY = -3.0
+    HIT_REWARD = 4.0
+    TARGET_REGEN_REWARD = 8.0
     SURVIVAL_REWARD = 0.00 / RENDER_FPS
-    TARGET_REWARD = 0.04 / RENDER_FPS
+    TARGET_REWARD = 0.06 / RENDER_FPS
     TARGET_DISTANCE_REWARD_MULTIPLIER = 2.0 / RENDER_FPS
     MOVE_REWARD = 0.000 / RENDER_FPS
-    SHOOT_PENALTY = -0.05
-    BULLET_SPEED_REWARD_FACTOR = 0.1
+    SHOOT_PENALTY = -0.1
+    BULLET_SPEED_REWARD_FACTOR = 0.2
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
-    def __init__(self, config=None, render_mode=None, size=700, players=4):
+    def __init__(self, config=None, render_mode=None, size=600, players=4):
         super(TankEnv, self).__init__()
 
         self.size = size
@@ -232,6 +232,8 @@ class TankEnv(MultiAgentEnv):
 
         for agent_idx in agents_hit:
             self._agent_states[agent_idx][TankState.HEALTH] -= 1
+            rewards[self.idx_to_agent_id(agent_idx)] += self.HURT_PENALTY
+
             if self._agent_states[agent_idx][TankState.HEALTH] == 0:
                 self.agents.remove(self.idx_to_agent_id(agent_idx))
                 self._agents_killed.add(agent_idx)

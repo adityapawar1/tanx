@@ -26,19 +26,18 @@ if __name__ == "__main__":
     config = (
         APPOConfig()
         .training(
-            lr=1e-6,
-            train_batch_size_per_learner=30000,
+            lr=1e-7,
+            train_batch_size_per_learner=40000,
             num_epochs=1,
             vtrace=True,
-            use_kl_loss=True,
 
-            lambda_=0.98,
+            lambda_=0.999,
             clip_param=0.2,
-            grad_clip=8.0,
+            grad_clip=4.0,
             grad_clip_by="global_norm",
 
             vf_loss_coeff=0.5,
-            entropy_coeff=0.01,
+            entropy_coeff=0.02,
         )
         .environment("TankEnv-v0")
         .env_runners(
@@ -71,7 +70,7 @@ if __name__ == "__main__":
     config.observation_filter = "MeanStdFilter"
 
     run_config = RunConfig(
-        name="tank-kl-loss-v10.1",
+        name="tank-kl-loss-v10.2",
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
         checkpoint_config=CheckpointConfig(
