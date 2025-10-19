@@ -207,7 +207,7 @@ class TankEnv(MultiAgentEnv):
         self._bullet_states = {idx: np.empty(shape=(0,4), dtype=np.float32) for idx in range(self.players)}
         self._agents_killed = set()
         self._ammo_replenish_counters = np.zeros((self.players,), dtype=np.int32)
-        self._agent_info = [{"agent_kills": 0, "max_charge": 0} for _ in range(self.players)]
+        self._agent_info = [{"agent_kills": 0, "max_charge": 0, "agent_hits": 0} for _ in range(self.players)]
 
         if self.render_mode == "human":
             self.render()
