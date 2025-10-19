@@ -44,16 +44,17 @@ def test_trained_model(checkpoint_path, num_episodes=5):
 
 if __name__ == '__main__':
     register_env("TankEnv-v0", lambda config: TankEnv(config))
-    # local_path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-objective-v6/PPO_TankEnv-v0_1fe7b_00000_0_2025-10-16_22-50-02/checkpoint_000001"
-    # local_path = "./ray_results/tank-relative-obs-v7/PPO_TankEnv-v0_1cc5e_00000_0_2025-10-17_03-36-17/checkpoint_000027"
-    local_path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_0ce0a_00000_0_2025-10-17_16-00-18/checkpoint_000001"
-    local_path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_0ce0a_00000_0_2025-10-17_16-00-18/checkpoint_000002"
-    local_path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_c17d3_00000_0_2025-10-17_18-57-09/checkpoint_000014"
-    local_path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_5cd93_00000_0_2025-10-17_21-31-49/checkpoint_000010"
-    local_path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_5cd93_00000_0_2025-10-17_21-31-49/checkpoint_000147"
-    local_path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_99675_00000_0_2025-10-18_14-58-37/checkpoint_000001"
+    # path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_0ce0a_00000_0_2025-10-17_16-00-18/checkpoint_000001"
+    # path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_0ce0a_00000_0_2025-10-17_16-00-18/checkpoint_000002"
+    # path = "./ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_c17d3_00000_0_2025-10-17_18-57-09/checkpoint_000014"
+    # path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_5cd93_00000_0_2025-10-17_21-31-49/checkpoint_000010"
+    # path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-hyperparams-v9/PPO_TankEnv-v0_5cd93_00000_0_2025-10-17_21-31-49/checkpoint_000147"
+    # path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_99675_00000_0_2025-10-18_14-58-37/checkpoint_000001"
+    # path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_f3630_00000_0_2025-10-18_15-22-36/checkpoint_000007"
+    # path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_f3630_00000_0_2025-10-18_15-22-36/checkpoint_000011"
+    path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_f3630_00000_0_2025-10-18_15-22-36/checkpoint_000020"
 
-    checkpoint_path = os.path.abspath(local_path)
+    checkpoint_path = os.path.abspath(path)
     test_trained_model(checkpoint_path, num_episodes=3)
 
 
