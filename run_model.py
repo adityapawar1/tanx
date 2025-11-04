@@ -54,6 +54,7 @@ if __name__ == '__main__':
     # path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_f3630_00000_0_2025-10-18_15-22-36/checkpoint_000011"
     path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-target-regen-v10/PPO_TankEnv-v0_f3630_00000_0_2025-10-18_15-22-36/checkpoint_000020"
     path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-kl-loss-v10.1/PPO_TankEnv-v0_ff09e_00000_0_2025-10-18_19-40-38/checkpoint_000149"
+    path = "/Users/adityapawar_1/Documents/work/personal/tank/ray_results/tank-kl-loss-v10.2/PPO_TankEnv-v0_cd137_00000_0_2025-10-19_14-15-55/checkpoint_000008"
 
     checkpoint_path = os.path.abspath(path)
     test_trained_model(checkpoint_path, num_episodes=3)

@@ -5,6 +5,7 @@ from ray import tune
 from ray.tune.registry import register_env
 from ray.tune import RunConfig, CheckpointConfig
 from ray.rllib.algorithms.appo import APPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from tank_env import TankEnv
 import dotenv
 
@@ -24,12 +25,12 @@ if __name__ == "__main__":
     num_env_runners = max(1, total_cpus - 2)
 
     config = (
-        APPOConfig()
+        PPOConfig()
         .training(
-            lr=1e-7,
+            lr=1e-5,
             train_batch_size_per_learner=40000,
-            num_epochs=1,
-            vtrace=True,
+            num_epochs=10,
+            # vtrace=True,
 
             lambda_=0.999,
             clip_param=0.2,
@@ -70,7 +71,7 @@ if __name__ == "__main__":
     config.observation_filter = "MeanStdFilter"
 
     run_config = RunConfig(
-        name="tank-kl-loss-v10.2",
+        name="tank-new-era-v11",
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
         checkpoint_config=CheckpointConfig(

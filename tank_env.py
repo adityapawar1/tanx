@@ -7,13 +7,12 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 # TODO: refactor to not use agent_idx and just use agent_id
 # TODO: make ts bounce
-# Add health
 class TankEnv(MultiAgentEnv):
     RENDER_FPS = 40
     MAX_TIME_SECONDS = 100
 
     MAX_HEALTH = 3
-    TANK_SPEED = 4
+    TANK_SPEED = 2
     TANK_SIZE_PIXELS = 32
     TANK_SIZE_FROM_CENTER = TANK_SIZE_PIXELS // 2
 
@@ -35,18 +34,18 @@ class TankEnv(MultiAgentEnv):
     TARGET_SPEED_FACTOR = 1.4
     TARGET_REGEN_SECONDS = 4
 
-    WIN_REWARD = 5.0
-    KILL_REWARD = 9.0
-    DEATH_PENALTY = -9.0
-    HURT_PENALTY = -3.0
-    HIT_REWARD = 4.0
-    TARGET_REGEN_REWARD = 8.0
+    WIN_REWARD = 0.5
+    KILL_REWARD = 1.0
+    DEATH_PENALTY = -1.0
+    HURT_PENALTY = -0.2
+    HIT_REWARD = 0.8
+    TARGET_REGEN_REWARD = 0.7
     SURVIVAL_REWARD = 0.00 / RENDER_FPS
-    TARGET_REWARD = 0.06 / RENDER_FPS
-    TARGET_DISTANCE_REWARD_MULTIPLIER = 2.0 / RENDER_FPS
+    TARGET_REWARD = 0.02 / RENDER_FPS
+    TARGET_DISTANCE_REWARD_MULTIPLIER = 1.5 / RENDER_FPS
     MOVE_REWARD = 0.000 / RENDER_FPS
-    SHOOT_PENALTY = -0.1
-    BULLET_SPEED_REWARD_FACTOR = 0.2
+    SHOOT_PENALTY = -0.0
+    BULLET_SPEED_REWARD_FACTOR = 0.02
 
     AGENT_PREFIX = "tank"
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": RENDER_FPS}
@@ -81,10 +80,13 @@ class TankEnv(MultiAgentEnv):
         self.full_bullet_space_low = np.tile(single_bullet_space_low, (players - 1) * self.MAX_AMMO)
         self.full_bullet_space_high = np.tile(single_bullet_space_high, (players - 1) * self.MAX_AMMO)
 
+        self.obs_space_low = np.concat((self.target_space_low, self.full_agent_space_low, self.full_bullet_space_low))
+        self.obs_space_high = np.concat((self.target_space_high, self.full_agent_space_high, self.full_bullet_space_high))
+
         self.observation_space = gym.spaces.Box(
-            low=np.concat((self.target_space_low, self.full_agent_space_low, self.full_bullet_space_low)),
-            high=np.concat((self.target_space_high, self.full_agent_space_high, self.full_bullet_space_high)),
-            shape=(len(self.target_space_low) + len(self.full_agent_space_low) + len(self.full_bullet_space_low),),
+            low=self.obs_space_low,
+            high=self.obs_space_high,
+            shape=(len(self.obs_space_high),),
             dtype=np.float32
         )
 
@@ -179,7 +181,7 @@ class TankEnv(MultiAgentEnv):
             this_agent,
             other_agents_relative,
             bullet_states_relative,
-        ))
+        )) / self.obs_space_high
 
     def _get_all_info(self):
         return {agent_id: self._get_info(self.agent_id_to_idx(agent_id)) for agent_id in self.agents}
@@ -361,7 +363,6 @@ class TankEnv(MultiAgentEnv):
             if self._ammo_replenish_counters[agent_idx] >= self.AMMO_REPLENISH_TIME_STEPS:
                 agent_state[TankState.AMMO] += 1
                 self._ammo_replenish_counters[agent_idx] = 0
-
 
         return reward, list(agents_hit)
 
