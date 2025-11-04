@@ -84,8 +84,8 @@ class TankEnv(MultiAgentEnv):
         self.obs_space_high = np.concat((self.target_space_high, self.full_agent_space_high, self.full_bullet_space_high))
 
         self.observation_space = gym.spaces.Box(
-            low=self.obs_space_low,
-            high=self.obs_space_high,
+            low=self.obs_space_low / self.obs_space_high,
+            high=self.obs_space_high / self.obs_space_high,
             shape=(len(self.obs_space_high),),
             dtype=np.float32
         )
