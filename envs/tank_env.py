@@ -87,7 +87,7 @@ class TankEnv(MultiAgentEnv):
             low=self.obs_space_low / self.obs_space_high,
             high=self.obs_space_high / self.obs_space_high,
             shape=(len(self.obs_space_high),),
-            dtype=np.float32
+            dtype=np.float64
         )
 
         # ray rllib doesnt support multi binary rn bruh

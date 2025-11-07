@@ -27,8 +27,8 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .training(
-            lr=1e-5,
-            train_batch_size_per_learner=40000,
+            lr=2e-5,
+            train_batch_size_per_learner=16000,
             num_epochs=10,
             # vtrace=True,
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     config.observation_filter = "MeanStdFilter"
 
     run_config = RunConfig(
-        name="tank-new-era-v11",
+        name="tank-new-era-v11.1",
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
         checkpoint_config=CheckpointConfig(
