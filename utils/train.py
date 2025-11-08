@@ -9,12 +9,18 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from tank_env import TankEnv
 import dotenv
 
+from envs.snake_env import SnakeEnv
+
 dotenv.load_dotenv()
 
 if __name__ == "__main__":
     s3_bucket_name = os.environ["S3_BUCKET_NAME"]
     register_env("TankEnv-v0", lambda config: TankEnv(config))
-    env = TankEnv()
+    register_env("SnakeEnv-v0", lambda config: SnakeEnv(config))
+
+    env_id = "SnakeEnv-v0"
+    # env = TankEnv()
+    env = SnakeEnv()
 
     num_cpus = multiprocessing.cpu_count()
     ray.init(address="auto")
@@ -40,7 +46,7 @@ if __name__ == "__main__":
             vf_loss_coeff=0.5,
             entropy_coeff=0.02,
         )
-        .environment("TankEnv-v0")
+        .environment(env_id)
         .env_runners(
             num_env_runners=num_env_runners,
             num_envs_per_env_runner=8,
@@ -57,9 +63,9 @@ if __name__ == "__main__":
                         {
                         "model": {
                             "vf_share_layers": True,
-                            "use_lstm": False,
+                            "use_lstm": True,
                             "free_log_std": False,
-                            "fcnet_hiddens": [256, 256],
+                            "fcnet_hiddens": [64, 64],
                             "fcnet_activation": "relu",
                         }
                     }
@@ -71,7 +77,7 @@ if __name__ == "__main__":
     config.observation_filter = "MeanStdFilter"
 
     run_config = RunConfig(
-        name="tank-new-era-v11.1",
+        name="snake-v0",
         storage_path=f"s3://{s3_bucket_name}/ray",
         stop={"training_iteration": 5000},
         checkpoint_config=CheckpointConfig(
